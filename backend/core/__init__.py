@@ -1,0 +1,1 @@
+# Go Chicken - Core package

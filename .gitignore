@@ -1,0 +1,46 @@
+# ── Go Chicken — .gitignore ──────────────────────────────────
+
+# Environment & Secrets (CRITICAL — never push these!)
+.env
+.env.*
+!.env.example
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+*.egg-info/
+dist/
+build/
+*.egg
+.venv/
+venv/
+env/
+
+# Node / Next.js
+node_modules/
+.next/
+out/
+.turbo/
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Docker
+*.log
+
+# Ngrok
+ngrok.yml
+
+# Archives (don't push 229MB zips!)
+*.zip

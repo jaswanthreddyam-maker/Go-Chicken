@@ -1,0 +1,13 @@
+fastapi
+uvicorn
+sqlalchemy
+asyncpg
+httpx
+pydantic-settings
+pytest
+pytest-asyncio
+respx
+pgvector
+alembic
+cloudinary
+python-multipart

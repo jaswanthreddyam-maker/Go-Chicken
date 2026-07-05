@@ -1,0 +1,129 @@
+@import "tailwindcss";
+
+:root {
+  --background: #FAFAFA;
+  --foreground: #111111;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-inter), var(--font-geist-sans), system-ui, sans-serif;
+  --font-mono: var(--font-geist-mono), ui-monospace, monospace;
+}
+
+/* Force light mode — B&W monochromatic doesn't use dark mode */
+@media (prefers-color-scheme: dark) {
+  :root {
+    --background: #FAFAFA;
+    --foreground: #111111;
+  }
+}
+
+body {
+  background: #FFFFFF;
+  color: var(--foreground);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  overflow-x: hidden;
+}
+
+/* ── Scrollbar Utilities ────────────────────────────────── */
+.scrollbar-none {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+.scrollbar-none::-webkit-scrollbar {
+  display: none;
+}
+
+/* ── Responsive Table Cell Minimum Widths ──────────────── */
+@media (max-width: 767px) {
+  table th,
+  table td {
+    white-space: nowrap;
+    min-width: 90px;
+  }
+}
+
+/* ── Smooth scroll snap for mobile stat cards ─────────── */
+@media (max-width: 767px) {
+  .snap-start {
+    scroll-snap-align: start;
+  }
+}
+
+/* ── Touch-friendly tap targets on mobile ──────────────── */
+@media (max-width: 767px) {
+  button,
+  [role="button"],
+  a {
+    min-height: 44px;
+    min-width: 44px;
+  }
+  /* Exceptions for inline badges and tiny labels */
+  span[class*="px-2"][class*="py-1"],
+  span[class*="px-2"][class*="py-0"] {
+    min-height: unset;
+    min-width: unset;
+  }
+}
+
+/* ── Animate-in utility ────────────────────────────────── */
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@keyframes slideInFromBottom {
+  from { transform: translateY(100%); }
+  to { transform: translateY(0); }
+}
+.animate-in {
+  animation-fill-mode: both;
+}
+.fade-in {
+  animation-name: fadeIn;
+}
+.slide-in-from-bottom {
+  animation-name: slideInFromBottom;
+}
+.duration-300 {
+  animation-duration: 300ms;
+}
+
+@keyframes waveAppear {
+  0% {
+    opacity: 0;
+    transform: translateY(-12px) scale(0.95);
+  }
+  60% {
+    transform: translateY(2px) scale(1.02);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+.animate-wave {
+  animation: waveAppear 0.5s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+}
+
+/* ── Landing Page: Floating hero image ─────────────────── */
+@keyframes float {
+  0%, 100% { transform: translateY(0); }
+  50%      { transform: translateY(-12px); }
+}
+.animate-float {
+  animation: float 5s ease-in-out infinite;
+}
+
+/* ── Landing Page: Infinite marquee scroll ─────────────── */
+@keyframes marquee {
+  0%   { transform: translateX(0); }
+  100% { transform: translateX(-50%); }
+}
+.animate-marquee {
+  animation: marquee 25s linear infinite;
+  width: max-content;
+}

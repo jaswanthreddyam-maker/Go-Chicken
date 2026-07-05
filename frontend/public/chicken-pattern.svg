@@ -1,0 +1,120 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="600" height="600" viewBox="0 0 600 600">
+  <rect width="600" height="600" fill="#FFFFFF"/>
+
+  <!--
+    Go Chicken — Seamless Doodle Pattern Tile (600×600)
+    Distribution: 70% Drumstick, 20% Roasted Chicken, 10% Live Hen
+    Color: Light grey (#E8E8E8)
+    Plus scattered circles and dots for texture.
+  -->
+
+  <!-- ═══════════════════════════════════════════════════════ -->
+  <!-- REUSABLE ICON DEFINITIONS                              -->
+  <!-- ═══════════════════════════════════════════════════════ -->
+  <defs>
+    <!-- DRUMSTICK — traced from user's icon (viewBox 0 0 32 32) -->
+    <g id="drumstick">
+      <path d="M22.5 3.5c-4.2-1.5-8.8 0.8-10.3 5l-1.8 5.2c-0.5 1.4-1.4 2.5-2.6 3.3l-1.5 1c-0.8 0.5-1.2 1.4-1 2.3 0.2 0.9 0.9 1.5 1.8 1.6l0.5 0c0.3 0 0.5 0.3 0.4 0.6l-0.2 0.5c-0.3 0.9 0 1.8 0.7 2.4 0.7 0.5 1.7 0.6 2.5 0.2l0.5-0.3c0.3-0.1 0.6 0 0.7 0.3l0.2 0.5c0.3 0.9 1.1 1.4 2 1.4 0.9 0 1.7-0.6 2-1.5l1.5-4.2c0.8-0.2 1.5-0.5 2.2-1l1.2-0.8" fill="none" stroke="#E8E8E8" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+      <path d="M18.5 5.5c3.2 1.2 5.2 4.2 5 7.6-0.2 2.5-1.4 4.5-3.3 5.8" fill="none" stroke="#E8E8E8" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+      <path d="M20.2 15c0.8-1 1.2-2.3 1-3.5" fill="none" stroke="#E8E8E8" stroke-width="1.5" stroke-linecap="round"/>
+      <circle cx="17" cy="9" r="0.7" fill="#E8E8E8"/>
+      <circle cx="19.5" cy="11" r="0.7" fill="#E8E8E8"/>
+      <circle cx="17.5" cy="12.5" r="0.6" fill="#E8E8E8"/>
+    </g>
+
+    <!-- ROASTED CHICKEN — traced from user's icon (viewBox 0 0 32 32) -->
+    <g id="roasted">
+      <path d="M8 24c-1 0-2-0.2-2.8-0.8C4 22.2 3.5 20.8 4 19.5c0.5-2 2-3.5 4-4l1-0.5c1.5-2 4-3 6.5-3 2 0 3.8 0.6 5.2 1.8l0.8-0.3c2-0.5 3.5 0 4 1.5 0.5 1.5-0.2 3.5-2 4.5" fill="none" stroke="#E8E8E8" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+      <path d="M6.5 22.5c2 2 5.5 2.5 9 2.5h6c1 0 2-0.5 2.5-1.2" fill="none" stroke="#E8E8E8" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+      <path d="M13 12l-1.5-3c-0.3-0.6 0-1.3 0.5-1.7l0 0c0.6-0.3 1.3-0.1 1.7 0.4l2 3" fill="none" stroke="#E8E8E8" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+      <path d="M18 12l1-2.5c0.3-0.6 1-0.9 1.6-0.6l0 0c0.6 0.3 0.9 1 0.6 1.6l-1.2 2.5" fill="none" stroke="#E8E8E8" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+      <circle cx="12.5" cy="7" r="1.2" fill="none" stroke="#E8E8E8" stroke-width="1.5"/>
+      <circle cx="20.5" cy="8" r="1.2" fill="none" stroke="#E8E8E8" stroke-width="1.5"/>
+      <circle cx="9" cy="23" r="0.5" fill="#E8E8E8"/>
+    </g>
+
+    <!-- LIVE HEN — traced from user's icon (viewBox 0 0 32 32) -->
+    <g id="hen">
+      <path d="M10 26l0 3M12 26l0 3M21 26l0 3M23 26l0 3" fill="none" stroke="#E8E8E8" stroke-width="1.8" stroke-linecap="round"/>
+      <path d="M7 26c0-4 1-7 3-9l-3-3.5c-0.5-0.6-0.4-1.5 0.2-2l0 0c0.6-0.5 1.5-0.4 2 0.2l2.5 2.8c1.5-1 3.5-1.5 5.5-1.5 5 0 9 3.5 9 8v5H7z" fill="none" stroke="#E8E8E8" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+      <path d="M26 19c1.5-0.5 3-0.3 3 1v0c0 1-1 1.5-2 1.5" fill="none" stroke="#E8E8E8" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+      <path d="M22 16c0.5-1 1.5-2 2.5-2" fill="none" stroke="#E8E8E8" stroke-width="1.3" stroke-linecap="round"/>
+      <circle cx="23" cy="17.5" r="0.8" fill="#E8E8E8"/>
+    </g>
+  </defs>
+
+  <!-- ═══════════════════════════════════════════════════════ -->
+  <!-- DRUMSTICK PLACEMENTS (70% — 14 instances)              -->
+  <!-- ═══════════════════════════════════════════════════════ -->
+  <use href="#drumstick" transform="translate(40, 30) rotate(15, 16, 16) scale(1.1)"/>
+  <use href="#drumstick" transform="translate(420, 75) rotate(200, 16, 16) scale(1.25)"/>
+  <use href="#drumstick" transform="translate(135, 155) rotate(75, 16, 16) scale(0.85)"/>
+  <use href="#drumstick" transform="translate(510, 220) rotate(310, 16, 16) scale(1.3)"/>
+  <use href="#drumstick" transform="translate(55, 330) rotate(130, 16, 16) scale(1.0)"/>
+  <use href="#drumstick" transform="translate(285, 270) rotate(250, 16, 16) scale(1.15)"/>
+  <use href="#drumstick" transform="translate(465, 420) rotate(45, 16, 16) scale(0.9)"/>
+  <use href="#drumstick" transform="translate(245, 45) rotate(170, 16, 16) scale(1.2)"/>
+  <use href="#drumstick" transform="translate(10, 490) rotate(290, 16, 16) scale(1.05)"/>
+  <use href="#drumstick" transform="translate(305, 510) rotate(100, 16, 16) scale(0.8)"/>
+  <use href="#drumstick" transform="translate(555, 360) rotate(60, 16, 16) scale(0.7)"/>
+  <use href="#drumstick" transform="translate(175, 440) rotate(340, 16, 16) scale(1.15)"/>
+  <use href="#drumstick" transform="translate(530, 50) rotate(220, 16, 16) scale(0.75)"/>
+  <use href="#drumstick" transform="translate(365, 155) rotate(0, 16, 16) scale(1.0)"/>
+
+  <!-- ═══════════════════════════════════════════════════════ -->
+  <!-- ROASTED CHICKEN PLACEMENTS (20% — 4 instances)         -->
+  <!-- ═══════════════════════════════════════════════════════ -->
+  <use href="#roasted" transform="translate(430, 135) rotate(25, 16, 16) scale(1.15)"/>
+  <use href="#roasted" transform="translate(80, 230) rotate(180, 16, 16) scale(0.9)"/>
+  <use href="#roasted" transform="translate(345, 480) rotate(95, 16, 16) scale(1.3)"/>
+  <use href="#roasted" transform="translate(155, 65) rotate(300, 16, 16) scale(0.8)"/>
+
+  <!-- ═══════════════════════════════════════════════════════ -->
+  <!-- LIVE HEN PLACEMENTS (10% — 2 instances)                -->
+  <!-- ═══════════════════════════════════════════════════════ -->
+  <use href="#hen" transform="translate(225, 370) rotate(10, 16, 16) scale(1.05)"/>
+  <use href="#hen" transform="translate(535, 490) rotate(350, 16, 16) scale(0.7)"/>
+
+  <!-- ═══════════════════════════════════════════════════════ -->
+  <!-- SCATTERED CIRCLES (Texture)                            -->
+  <!-- ═══════════════════════════════════════════════════════ -->
+  <circle cx="95" cy="30" r="8" fill="none" stroke="#E8E8E8" stroke-width="1.2"/>
+  <circle cx="320" cy="120" r="11" fill="none" stroke="#E8E8E8" stroke-width="1.0"/>
+  <circle cx="490" cy="310" r="6" fill="none" stroke="#E8E8E8" stroke-width="1.3"/>
+  <circle cx="200" cy="310" r="9" fill="none" stroke="#E8E8E8" stroke-width="1.1"/>
+  <circle cx="550" cy="175" r="7" fill="none" stroke="#E8E8E8" stroke-width="1.2"/>
+  <circle cx="70" cy="435" r="10" fill="none" stroke="#E8E8E8" stroke-width="1.0"/>
+  <circle cx="430" cy="545" r="5" fill="none" stroke="#E8E8E8" stroke-width="1.4"/>
+  <circle cx="160" cy="555" r="8" fill="none" stroke="#E8E8E8" stroke-width="1.1"/>
+  <circle cx="380" cy="345" r="12" fill="none" stroke="#E8E8E8" stroke-width="0.9"/>
+  <circle cx="520" cy="455" r="6" fill="none" stroke="#E8E8E8" stroke-width="1.3"/>
+  <circle cx="250" cy="195" r="4" fill="none" stroke="#E8E8E8" stroke-width="1.5"/>
+  <circle cx="460" cy="20" r="9" fill="none" stroke="#E8E8E8" stroke-width="1.0"/>
+  <circle cx="30" cy="175" r="7" fill="none" stroke="#E8E8E8" stroke-width="1.2"/>
+  <circle cx="580" cy="75" r="5" fill="none" stroke="#E8E8E8" stroke-width="1.4"/>
+
+  <!-- ═══════════════════════════════════════════════════════ -->
+  <!-- SCATTERED DOTS (Tiny filled circles)                   -->
+  <!-- ═══════════════════════════════════════════════════════ -->
+  <circle cx="140" cy="115" r="2.5" fill="#E8E8E8"/>
+  <circle cx="350" cy="60" r="2" fill="#E8E8E8"/>
+  <circle cx="500" cy="140" r="1.8" fill="#E8E8E8"/>
+  <circle cx="220" cy="255" r="2.2" fill="#E8E8E8"/>
+  <circle cx="450" cy="245" r="1.5" fill="#E8E8E8"/>
+  <circle cx="110" cy="375" r="2" fill="#E8E8E8"/>
+  <circle cx="300" cy="425" r="2.5" fill="#E8E8E8"/>
+  <circle cx="560" cy="285" r="1.8" fill="#E8E8E8"/>
+  <circle cx="40" cy="555" r="2" fill="#E8E8E8"/>
+  <circle cx="480" cy="475" r="2.2" fill="#E8E8E8"/>
+  <circle cx="180" cy="185" r="1.5" fill="#E8E8E8"/>
+  <circle cx="410" cy="395" r="2" fill="#E8E8E8"/>
+  <circle cx="270" cy="545" r="1.8" fill="#E8E8E8"/>
+  <circle cx="530" cy="525" r="2.5" fill="#E8E8E8"/>
+  <circle cx="75" cy="90" r="1.5" fill="#E8E8E8"/>
+  <circle cx="340" cy="235" r="2" fill="#E8E8E8"/>
+  <circle cx="590" cy="435" r="1.8" fill="#E8E8E8"/>
+  <circle cx="20" cy="295" r="2.2" fill="#E8E8E8"/>
+  <circle cx="240" cy="475" r="1.5" fill="#E8E8E8"/>
+  <circle cx="490" cy="55" r="2" fill="#E8E8E8"/>
+
+</svg>
