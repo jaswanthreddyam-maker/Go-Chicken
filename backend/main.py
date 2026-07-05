@@ -64,9 +64,12 @@ async def root_handle_webhook(payload: WhatsAppWebhookPayload, background_tasks:
 
 @app.on_event("startup")
 async def startup():
-    # This creates the tables if they don't exist (useful for dev)
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
+    # In serverless environments (e.g. Vercel) or when DB is offline, prevent cold start hangs/crashes
+    try:
+        async with engine.begin() as conn:
+            await conn.run_sync(Base.metadata.create_all)
+    except Exception as e:
+        logging.warning(f"Could not connect to database on startup (table auto-creation skipped): {e}")
 
 @app.get("/")
 async def root():

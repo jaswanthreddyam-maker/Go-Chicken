@@ -1,9 +1,9 @@
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
 from sqlalchemy.orm import sessionmaker, declarative_base
 import os
+from core.config import get_settings
 
-# Change this in backend/core/database.py
-DATABASE_URL = "postgresql+asyncpg://postgres:adminpassword@localhost:5435/go_chicken"
+DATABASE_URL = os.getenv("DATABASE_URL", get_settings().DATABASE_URL)
 
 engine = create_async_engine(DATABASE_URL, echo=True)
 AsyncSessionLocal = sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
