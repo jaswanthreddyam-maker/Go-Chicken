@@ -1,5 +1,12 @@
-import logging
+import sys
+import os
 
+# Ensure the backend directory is in sys.path so modules like 'core', 'models', and 'routers' can be resolved in serverless environments (e.g., Vercel).
+current_dir = os.path.dirname(os.path.abspath(__file__))
+if current_dir not in sys.path:
+    sys.path.insert(0, current_dir)
+
+import logging
 from fastapi import FastAPI
 from core.database import engine, Base
 import models  # Import all models to ensure they are attached to Base.metadata
