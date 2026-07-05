@@ -12,7 +12,14 @@ export function LanguageProvider({ children }) {
   useEffect(() => {
     async function loadLanguagePref() {
       try {
-        let API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api/v1";
+        let API_BASE = process.env.NEXT_PUBLIC_API_URL;
+        if (!API_BASE) {
+          if (typeof window !== "undefined" && window.location.hostname !== "localhost" && window.location.hostname !== "127.0.0.1") {
+            API_BASE = "https://go-chicken-steel.vercel.app/api/v1";
+          } else {
+            API_BASE = "http://localhost:8000/api/v1";
+          }
+        }
         API_BASE = API_BASE.replace(/\/+$/, "");
         if (!API_BASE.endsWith("/api/v1")) API_BASE += "/api/v1";
         const res = await fetch(`${API_BASE}/profile`, {
