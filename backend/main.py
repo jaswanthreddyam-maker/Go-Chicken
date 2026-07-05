@@ -35,7 +35,9 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-from fastapi import Request, BackgroundTasks
+from fastapi import Request, BackgroundTasks, Depends
+from sqlalchemy.ext.asyncio import AsyncSession
+from core.database import get_db
 from schemas.whatsapp import WhatsAppWebhookPayload
 
 # Connect routers to the main app
@@ -60,6 +62,19 @@ async def root_verify_webhook(request: Request):
 @app.post("/whatsapp/webhook/")
 async def root_handle_webhook(payload: WhatsAppWebhookPayload, background_tasks: BackgroundTasks):
     return await whatsapp.handle_webhook(payload, background_tasks)
+
+
+# Root alias routes for Google OAuth in case frontend or direct link is missing /api/v1 prefix
+@app.get("/auth/google/login")
+@app.get("/auth/google/login/")
+async def root_google_login(request: Request):
+    return await auth.google_login(request)
+
+
+@app.get("/auth/google/callback")
+@app.get("/auth/google/callback/")
+async def root_google_callback(request: Request, code: str = None, error: str = None, db: AsyncSession = Depends(get_db)):
+    return await auth.google_callback(request, code, error, db)
 
 
 @app.on_event("startup")
