@@ -1,0 +1,21 @@
+[project]
+name = "go-chicken-backend"
+version = "0.1.0"
+description = "Go Chicken Supply Chain Engine API"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "fastapi",
+    "uvicorn",
+    "sqlalchemy",
+    "asyncpg",
+    "httpx",
+    "pydantic-settings",
+    "pgvector",
+    "alembic",
+    "cloudinary",
+    "python-multipart",
+]
+
+[tool.vercel]
+entrypoint = "backend.main:app"
