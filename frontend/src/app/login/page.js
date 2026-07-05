@@ -5,7 +5,13 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ArrowRight, Eye, EyeOff, Phone, Lock } from "lucide-react";
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api/v1";
+const getApiBase = () => {
+  let url = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api/v1";
+  url = url.replace(/\/+$/, "");
+  if (!url.endsWith("/api/v1")) url += "/api/v1";
+  return url;
+};
+const API_BASE = getApiBase();
 
 export default function LoginPage() {
   const router = useRouter();

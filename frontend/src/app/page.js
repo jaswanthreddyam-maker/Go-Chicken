@@ -14,8 +14,13 @@ import {
 import AnimatedButton from '@/components/AnimatedButton';
 import { useLanguage } from '@/context/LanguageContext';
 
-// ── API Base URL (from .env.local) ───────────────────────────────────
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api/v1";
+const getApiBase = () => {
+  let url = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api/v1";
+  url = url.replace(/\/+$/, "");
+  if (!url.endsWith("/api/v1")) url += "/api/v1";
+  return url;
+};
+const API_BASE = getApiBase();
 
 // ── Static mock data that will NOT be replaced by API calls ──────────
 const MOCK_AI_FORECAST = {

@@ -12,7 +12,9 @@ export function LanguageProvider({ children }) {
   useEffect(() => {
     async function loadLanguagePref() {
       try {
-        const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api/v1";
+        let API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api/v1";
+        API_BASE = API_BASE.replace(/\/+$/, "");
+        if (!API_BASE.endsWith("/api/v1")) API_BASE += "/api/v1";
         const res = await fetch(`${API_BASE}/profile`, {
           headers: {
             'Authorization': `Bearer dev-token`
