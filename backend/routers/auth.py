@@ -12,8 +12,9 @@ import time
 import json
 import base64
 import logging
+import os
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, Request
 from fastapi.responses import RedirectResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
@@ -155,12 +156,19 @@ async def login(body: LoginRequest, db: AsyncSession = Depends(get_db)):
     )
 
 
+def _get_redirect_uri(request: Request) -> str:
+    base_url = str(request.base_url).rstrip("/")
+    if "vercel.app" in base_url or os.getenv("VERCEL"):
+        base_url = base_url.replace("http://", "https://")
+    return f"{base_url}/api/v1/auth/google/callback"
+
+
 # ── Google OAuth Flow ─────────────────────────────────────────────────
 @router.get("/google/login")
-async def google_login():
+async def google_login(request: Request):
     """Initiate Google OAuth 2.0 authorization flow."""
     settings = get_settings()
-    redirect_uri = "http://localhost:8000/api/v1/auth/google/callback"
+    redirect_uri = _get_redirect_uri(request)
     params = {
         "client_id": settings.GOOGLE_CLIENT_ID,
         "redirect_uri": redirect_uri,
@@ -174,7 +182,7 @@ async def google_login():
 
 
 @router.get("/google/callback")
-async def google_callback(code: str = None, error: str = None, db: AsyncSession = Depends(get_db)):
+async def google_callback(request: Request, code: str = None, error: str = None, db: AsyncSession = Depends(get_db)):
     """Handle Google OAuth callback, exchange code for token, and authenticate user."""
     settings = get_settings()
     frontend_login = f"{settings.FRONTEND_URL}/login"
@@ -183,7 +191,7 @@ async def google_callback(code: str = None, error: str = None, db: AsyncSession 
         logger.warning(f"Google OAuth error or missing code: {error}")
         return RedirectResponse(f"{frontend_login}?error=Google login was cancelled or failed")
 
-    redirect_uri = "http://localhost:8000/api/v1/auth/google/callback"
+    redirect_uri = _get_redirect_uri(request)
     async with httpx.AsyncClient() as client:
         # 1. Exchange code for access token
         token_res = await client.post(
