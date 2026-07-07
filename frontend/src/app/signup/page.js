@@ -65,8 +65,7 @@ export default function SignupPage() {
         throw new Error(data.detail || "Signup failed. Please try again.");
       }
 
-      // Store auth data
-      localStorage.setItem("gc_token", data.access_token);
+      // Store user details, token is now handled via HTTP-only cookie
       localStorage.setItem("gc_user", JSON.stringify({
         user_id: data.user_id,
         tenant_id: data.tenant_id,
@@ -78,7 +77,7 @@ export default function SignupPage() {
       sessionStorage.removeItem("gc_welcome_played");
 
       // Redirect to dashboard
-      router.push("/");
+      router.push("/dashboard");
     } catch (err) {
       setError(err.message);
     } finally {
@@ -106,7 +105,7 @@ export default function SignupPage() {
         </div>
 
         <div className="relative z-10">
-          <Link href="/landing" className="flex items-center gap-2.5">
+          <Link href="/" className="flex items-center gap-2.5">
             <div className="p-1 border border-white/20">
               <img src="/logo.png" alt="Go Chicken" className="w-5 h-5 object-contain invert" />
             </div>

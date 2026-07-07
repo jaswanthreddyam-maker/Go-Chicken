@@ -12,6 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 
 from core.database import get_db
+from core.auth import get_current_tenant
 from core.pricing_service import get_all_prices, update_price
 from models.pricing import ProductPrice
 from schemas.pricing import PriceUpdate, PriceResponse
@@ -23,7 +24,10 @@ router = APIRouter(
 
 
 @router.get("/", response_model=List[PriceResponse])
-async def get_prices(db: AsyncSession = Depends(get_db)):
+async def get_prices(
+    tenant_id: str = Depends(get_current_tenant),
+    db: AsyncSession = Depends(get_db)
+):
     """Fetch current prices for all product types.
     
     If database table is empty, it automatically seeds default prices from `.env`.
@@ -48,7 +52,12 @@ async def get_prices(db: AsyncSession = Depends(get_db)):
 
 
 @router.put("/{item_type}", response_model=PriceResponse)
-async def set_price(item_type: str, payload: PriceUpdate, db: AsyncSession = Depends(get_db)):
+async def set_price(
+    item_type: str, 
+    payload: PriceUpdate, 
+    tenant_id: str = Depends(get_current_tenant),
+    db: AsyncSession = Depends(get_db)
+):
     """Update price per kg for a specific product item type (e.g. 'Live Bird', 'Dressed', 'Skinless')."""
     valid_items = {"Live Bird", "Dressed", "Skinless"}
     if item_type not in valid_items:

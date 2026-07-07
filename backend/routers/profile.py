@@ -53,6 +53,7 @@ async def get_profile(
         logger = logging.getLogger(__name__)
         logger.warning("Database offline during get_profile (%s). Returning demo profile.", e)
         return ProfileResponse(
+            id=uuid.uuid4(),
             tenant_id=tenant_id,
             admin_name="Demo Admin",
             business_name="Demo Business",

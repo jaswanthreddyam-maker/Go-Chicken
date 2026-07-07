@@ -10,7 +10,21 @@ import AnimatedButton from '@/components/AnimatedButton';
 import { useLanguage } from '@/context/LanguageContext';
 export default function ProfileSettings() {
   const router = useRouter();
-  
+
+  const getApiBase = () => {
+    let API_BASE = process.env.NEXT_PUBLIC_API_URL;
+    if (!API_BASE) {
+      if (typeof window !== "undefined" && window.location.hostname !== "localhost" && window.location.hostname !== "127.0.0.1") {
+        API_BASE = "https://go-chicken-steel.vercel.app/api/v1";
+      } else {
+        API_BASE = "http://localhost:8000/api/v1";
+      }
+    }
+    API_BASE = API_BASE.replace(/\/+$/, "");
+    if (!API_BASE.endsWith("/api/v1")) API_BASE += "/api/v1";
+    return API_BASE;
+  };
+
   // Local state for the settings
   const [basePrice, setBasePrice] = useState(135);
   const [creditLimit, setCreditLimit] = useState(100000);
@@ -36,14 +50,14 @@ export default function ProfileSettings() {
 
   React.useEffect(() => {
     async function fetchProfile() {
-      const token = localStorage.getItem('gc_token');
+      const token = localStorage.getItem('gc_user');
       if (!token) {
         router.replace('/landing');
         return;
       }
       try {
-        const res = await fetch('http://localhost:8000/api/v1/profile', {
-          headers: { 'Authorization': `Bearer ${token}` }
+        const res = await fetch(`${getApiBase()}/profile`, {
+          credentials: "include"
         });
         if (res.ok) {
           const data = await res.json();
@@ -98,9 +112,10 @@ export default function ProfileSettings() {
       const formData = new FormData();
       formData.append('file', file);
 
-      const res = await fetch('http://localhost:8000/api/v1/profile/upload_avatar', {
+      const token = localStorage.getItem('gc_user');
+      const res = await fetch(`${getApiBase()}/profile/upload_avatar`, {
         method: 'POST',
-        headers: { 'Authorization': 'Bearer dev-token' },
+        credentials: "include",
         body: formData,
       });
 
@@ -139,12 +154,13 @@ export default function ProfileSettings() {
         gstin: gstin,
         hub_location: hubLocation,
       };
-      const res = await fetch('http://localhost:8000/api/v1/profile', {
+      const token = localStorage.getItem('gc_user');
+      const res = await fetch(`${getApiBase()}/profile`, {
         method: 'PUT',
         headers: {
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer dev-token'
+          'Content-Type': 'application/json'
         },
+        credentials: "include",
         body: JSON.stringify(payload)
       });
       if (!res.ok) {
@@ -162,10 +178,9 @@ export default function ProfileSettings() {
 
   const handleExportCsv = async () => {
     try {
-      const res = await fetch('http://localhost:8000/api/v1/profile/export', {
-        headers: {
-          'Authorization': 'Bearer dev-token'
-        }
+      const token = localStorage.getItem('gc_user');
+      const res = await fetch(`${getApiBase()}/profile/export`, {
+        credentials: "include"
       });
       if (!res.ok) throw new Error('Export failed');
       const blob = await res.blob();
@@ -181,6 +196,20 @@ export default function ProfileSettings() {
       console.error(err);
       alert('Failed to export CSV.');
     }
+  };
+
+  const handleLogout = async () => {
+    try {
+      await fetch(`${getApiBase()}/auth/logout`, {
+        method: 'POST',
+        credentials: "include"
+      });
+    } catch(err) {
+      console.error(err);
+    }
+    localStorage.removeItem('gc_user');
+    sessionStorage.clear();
+    router.replace('/login');
   };
 
   // Reusable card wrapper
@@ -430,7 +459,7 @@ export default function ProfileSettings() {
             <button className="w-full flex items-center justify-center gap-2 px-4 py-3 border border-[#EBEBEB] hover:border-[#111111] hover:bg-[#FAFAFA] text-[#111111] text-xs font-bold uppercase tracking-wider rounded-md transition-all">
               <KeyRound size={16} /> {t('Reset Admin Password')}
             </button>
-            <button className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-[#111111] hover:bg-black text-white text-xs font-bold uppercase tracking-wider rounded-md transition-all">
+            <button onClick={handleLogout} className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-[#111111] hover:bg-black text-white text-xs font-bold uppercase tracking-wider rounded-md transition-all">
               <LogOut size={16} /> {t('Log Out from Go Chicken')}
             </button>
           </div>

@@ -27,20 +27,42 @@ app = FastAPI(
 )
 
 # Allow CORS for Next.js / frontend dashboard
+from core.config import get_settings
+settings = get_settings()
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # In production, specify exact domains
-    allow_origin_regex=".*",
+    allow_origins=[
+        settings.FRONTEND_URL,
+        "https://go-chicken-steel.vercel.app"
+    ],
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE"],
+    allow_headers=["Authorization", "Content-Type", "X-Tenant-ID"],
 )
+
+from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.requests import Request
+
+class HSTSMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: Request, call_next):
+        response = await call_next(request)
+        response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
+        return response
+
+app.add_middleware(HSTSMiddleware)
 
 from fastapi import Request, BackgroundTasks, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 from core.database import get_db
 from schemas.whatsapp import WhatsAppWebhookPayload
 from schemas.auth import SignupRequest, LoginRequest
+from routers.auth import limiter
+from slowapi.errors import RateLimitExceeded
+from slowapi import _rate_limit_exceeded_handler
+
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 # Connect routers to the main app
 app.include_router(orders.router)
@@ -75,31 +97,38 @@ async def root_google_login(request: Request):
 
 @app.get("/auth/google/callback")
 @app.get("/auth/google/callback/")
-async def root_google_callback(request: Request, code: str = None, error: str = None, db: AsyncSession = Depends(get_db)):
-    return await auth.google_callback(request, code, error, db)
+async def root_google_callback(request: Request, code: str = None, error: str = None, state: str = None, db: AsyncSession = Depends(get_db)):
+    return await auth.google_callback(request, code, error, state, db)
 
 
 @app.post("/auth/signup")
 @app.post("/auth/signup/")
-async def root_signup(body: SignupRequest, db: AsyncSession = Depends(get_db)):
-    return await auth.signup(body, db)
+async def root_signup(request: Request, body: SignupRequest, db: AsyncSession = Depends(get_db)):
+    return await auth.signup(request, body, db)
 
 
 @app.post("/auth/login")
 @app.post("/auth/login/")
-async def root_login(body: LoginRequest, db: AsyncSession = Depends(get_db)):
-    return await auth.login(body, db)
+async def root_login(request: Request, body: LoginRequest, db: AsyncSession = Depends(get_db)):
+    return await auth.login(request, body, db)
 
 
 @app.on_event("startup")
 async def startup():
-    # In serverless environments (e.g. Vercel) or when DB is offline, prevent cold start hangs/crashes
-    try:
-        async with engine.begin() as conn:
-            await conn.run_sync(Base.metadata.create_all)
-    except Exception as e:
-        logging.warning(f"Could not connect to database on startup (table auto-creation skipped): {e}")
+    # Table auto-creation removed in favor of Alembic migrations.
+    # Please use `alembic upgrade head` to manage the schema.
+    pass
 
 @app.get("/")
 async def root():
     return {"message": "Go Chicken Supply Chain Engine is running smoothly!"}
+
+@app.get("/health")
+async def health_check():
+    from fastapi.responses import JSONResponse
+    try:
+        async with engine.begin() as conn:
+            await conn.execute(text("SELECT 1"))
+        return {"status": "healthy", "db": "connected"}
+    except Exception as e:
+        return JSONResponse(status_code=503, content={"status": "unhealthy", "db": "disconnected"})

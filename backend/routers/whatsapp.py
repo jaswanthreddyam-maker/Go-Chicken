@@ -59,8 +59,8 @@ async def verify_webhook(request: Request):
     token = request.query_params.get("hub.verify_token")
     challenge = request.query_params.get("hub.challenge")
 
-    # Check against both config variable and explicit string just in case .env was modified
-    if mode == "subscribe" and token in (settings.WHATSAPP_VERIFY_TOKEN, "gochicken123"):
+    import hmac
+    if mode == "subscribe" and hmac.compare_digest(token or "", settings.WHATSAPP_VERIFY_TOKEN):
         logger.info(f"✅ Webhook verified successfully! Challenge: {challenge}")
         return Response(content=challenge, media_type="text/plain")
 

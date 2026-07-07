@@ -9,7 +9,6 @@ from pydantic import BaseModel, Field
 class ForecastRequest(BaseModel):
     """Request to trigger a demand forecast generation."""
 
-    tenant_id: uuid.UUID
     target_date: date = Field(..., description="The date to predict demand for")
     weather_condition: str | None = Field(
         None,

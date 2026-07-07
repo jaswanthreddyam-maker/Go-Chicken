@@ -19,6 +19,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.config import get_settings
 from core.database import get_db
+from core.auth import get_current_tenant
 from models.classification_log import ClassificationLog
 from schemas.analytics import (
     ClassificationLogOut,
@@ -51,6 +52,7 @@ async def get_classification_logs(
     limit: int = Query(50, ge=1, le=500, description="Number of logs to return"),
     source: str = Query(None, description="Filter by source: 'ollama' or 'regex'"),
     intent: str = Query(None, description="Filter by intent: 'ORDER', 'INQUIRY', 'GREETING'"),
+    tenant_id: str = Depends(get_current_tenant),
     db: AsyncSession = Depends(get_db),
 ):
     """Fetch recent classification log entries, newest first.
@@ -83,6 +85,7 @@ async def get_classification_logs(
     summary="Get aggregated classification statistics",
 )
 async def get_classification_stats(
+    tenant_id: str = Depends(get_current_tenant),
     db: AsyncSession = Depends(get_db),
 ):
     """Full analytics for the Brain Health dashboard.

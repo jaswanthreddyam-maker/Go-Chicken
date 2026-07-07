@@ -5,9 +5,9 @@ services:
     image: pgvector/pgvector:pg16
     container_name: go_chicken_db
     environment:
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: adminpassword
-      POSTGRES_DB: go_chicken
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB:-go_chicken}
     ports:
       - "5435:5432"
     volumes:

@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.config import get_settings
 from core.database import get_db
+from core.auth import get_current_tenant
 from models.ai import AIForecast
 from models.order import Order
 from schemas.ai import ForecastOut, ForecastRequest
@@ -100,6 +101,7 @@ async def generate_ollama_embedding(text: str) -> list[float]:
 )
 async def generate_forecast(
     request: ForecastRequest,
+    tenant_id: uuid.UUID = Depends(get_current_tenant),
     db: AsyncSession = Depends(get_db),
 ):
     """
@@ -119,7 +121,7 @@ async def generate_forecast(
             func.sum(Order.quantity_kg).label("total_kg"),
         )
         .where(
-            Order.tenant_id == request.tenant_id,
+            Order.tenant_id == tenant_id,
             Order.delivery_date >= seven_days_ago,
             Order.delivery_date < target_date,
         )
@@ -163,7 +165,7 @@ async def generate_forecast(
 
     # 4. Persist the forecast to PostgreSQL (pgvector handles the list automatically)
     new_forecast = AIForecast(
-        tenant_id=request.tenant_id,
+        tenant_id=tenant_id,
         target_date=target_date,
         weather_condition=weather,
         predicted_demand_kg=predicted_demand,
@@ -185,7 +187,7 @@ async def generate_forecast(
     summary="Get today's demand forecast for the dashboard",
 )
 async def get_todays_forecast(
-    tenant_id: uuid.UUID = Query(...),
+    tenant_id: uuid.UUID = Depends(get_current_tenant),
     db: AsyncSession = Depends(get_db),
 ):
     """

@@ -14,6 +14,7 @@ from sqlalchemy.future import select
 
 from core.config import get_settings
 from core.database import get_db
+from core.auth import get_current_tenant
 from models.order import Order
 from schemas.order import OrderCreate, OrderResponse, OrderStatusUpdate
 from routers.whatsapp import _send_whatsapp_reply
@@ -28,9 +29,14 @@ router = APIRouter(
 
 
 @router.post("/", response_model=OrderResponse, status_code=status.HTTP_201_CREATED)
-async def create_order(order_data: OrderCreate, db: AsyncSession = Depends(get_db)):
+async def create_order(
+    order_data: OrderCreate,
+    tenant_id: uuid.UUID = Depends(get_current_tenant),
+    db: AsyncSession = Depends(get_db)
+):
     """Webhook / REST endpoint to manually or externally create an order."""
     new_order = Order(
+        tenant_id=tenant_id,
         phone_number=order_data.phone_number,
         item_type=order_data.item_type,
         quantity_kg=order_data.quantity_kg,
@@ -45,9 +51,14 @@ async def create_order(order_data: OrderCreate, db: AsyncSession = Depends(get_d
 
 
 @router.get("/", response_model=List[OrderResponse])
-async def get_all_orders(db: AsyncSession = Depends(get_db)):
+async def get_all_orders(
+    tenant_id: uuid.UUID = Depends(get_current_tenant),
+    db: AsyncSession = Depends(get_db)
+):
     """Dashboard endpoint: Fetch all poultry orders ordered by newest first."""
-    result = await db.execute(select(Order).order_by(Order.created_at.desc()))
+    result = await db.execute(
+        select(Order).where(Order.tenant_id == tenant_id).order_by(Order.created_at.desc())
+    )
     orders = result.scalars().all()
     return orders
 
@@ -57,13 +68,14 @@ async def update_order_status(
     order_id: uuid.UUID,
     payload: OrderStatusUpdate,
     background_tasks: BackgroundTasks,
+    tenant_id: uuid.UUID = Depends(get_current_tenant),
     db: AsyncSession = Depends(get_db)
 ):
     """Admin Dashboard endpoint: Toggle order fulfillment status.
     
     Automatically triggers a WhatsApp notification to the retailer when status changes!
     """
-    result = await db.execute(select(Order).where(Order.id == order_id))
+    result = await db.execute(select(Order).where(Order.id == order_id, Order.tenant_id == tenant_id))
     order = result.scalar_one_or_none()
     
     if not order:

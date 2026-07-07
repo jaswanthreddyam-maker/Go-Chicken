@@ -16,6 +16,29 @@ from schemas.khata import KhataTransactionCreate, KhataTransactionOut, KhataBala
 router = APIRouter()
 
 
+from typing import List
+from pydantic import BaseModel
+
+class RetailerResponse(BaseModel):
+    id: uuid.UUID
+    name: str
+    phone: str
+
+@router.get(
+    "/retailers",
+    response_model=List[RetailerResponse],
+    summary="Get all retailers for the current tenant"
+)
+async def get_retailers(
+    tenant_id: uuid.UUID = Depends(get_current_tenant),
+    db: AsyncSession = Depends(get_db),
+):
+    from models.user import UserRole
+    result = await db.execute(
+        select(User).where(User.tenant_id == tenant_id, User.role == UserRole.RETAILER)
+    )
+    return result.scalars().all()
+
 @router.get(
     "/{retailer_id}/balance",
     response_model=KhataBalanceResponse,
@@ -23,12 +46,13 @@ router = APIRouter()
 )
 async def get_balance(
     retailer_id: uuid.UUID,
+    tenant_id: uuid.UUID = Depends(get_current_tenant),
     db: AsyncSession = Depends(get_db),
 ):
     """Fetches the running balance from the most recent Khata transaction."""
     # 1. Fetch the retailer
     retailer = await db.get(User, retailer_id)
-    if not retailer:
+    if not retailer or retailer.tenant_id != tenant_id:
         raise HTTPException(status_code=404, detail="Retailer not found.")
 
     # 2. Get the latest transaction to read balance_after
@@ -65,12 +89,13 @@ async def create_transaction(
       - 'payment' → decreases the balance (retailer paid)
       - 'adjustment' → can go either way (e.g., mortality credit)
     """
-    # 1. Get current balance
+    # 1. Get current balance with row-level lock to prevent race conditions
     result = await db.execute(
         select(KhataTransaction)
         .where(KhataTransaction.retailer_id == payload.retailer_id)
         .order_by(desc(KhataTransaction.created_at))
         .limit(1)
+        .with_for_update()
     )
     latest_txn = result.scalar_one_or_none()
     current_balance = latest_txn.balance_after if latest_txn else Decimal("0.00")
@@ -95,7 +120,8 @@ async def create_transaction(
         reference_note=payload.reference_note,
     )
     db.add(txn)
-    await db.flush()
+    await db.commit()
+    await db.refresh(txn)
 
     return KhataTransactionOut(
         id=txn.id,

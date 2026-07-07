@@ -21,8 +21,7 @@ function CallbackContent() {
       return;
     }
 
-    if (token) {
-      localStorage.setItem("gc_token", token);
+    if (user_id) {
       localStorage.setItem("gc_user", JSON.stringify({
         user_id,
         tenant_id,
@@ -31,7 +30,7 @@ function CallbackContent() {
       }));
       sessionStorage.setItem("gc_visited_landing", "true");
       sessionStorage.removeItem("gc_welcome_played");
-      router.push("/");
+      router.push("/dashboard");
     } else {
       router.push("/login?error=Invalid OAuth response");
     }

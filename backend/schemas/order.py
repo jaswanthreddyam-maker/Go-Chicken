@@ -1,6 +1,7 @@
 from pydantic import BaseModel, Field, UUID4, ConfigDict
 from typing import Optional
 from datetime import datetime
+from models.order import OrderStatus
 
 # What we expect when WhatsApp webhook sends a new order
 class OrderCreate(BaseModel):
@@ -24,4 +25,4 @@ class OrderResponse(BaseModel):
 
 
 class OrderStatusUpdate(BaseModel):
-    status: str = Field(..., description="New status: pending, processing, delivered, cancelled", json_schema_extra={"example": "delivered"})
+    status: OrderStatus = Field(..., description="New status: pending, processing, delivered, cancelled", json_schema_extra={"example": "delivered"})

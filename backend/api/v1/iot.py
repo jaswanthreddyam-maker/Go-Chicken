@@ -1,6 +1,7 @@
 """IoT & Telemetry Router — receives live truck sensor data."""
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Header
+import hmac
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -21,12 +22,16 @@ settings = get_settings()
 async def receive_telemetry(
     device_id: str,
     payload: TelemetryPayload,
+    x_api_key: str = Header(..., alias="X-API-Key"),
     db: AsyncSession = Depends(get_db),
 ):
     """
     Receives temperature and GPS data from a truck's IoT device.
     Automatically flags an alert if the temperature exceeds the safe threshold.
     """
+    if not hmac.compare_digest(x_api_key, settings.IOT_API_KEY):
+        raise HTTPException(status_code=401, detail="Invalid IoT API key")
+
     # 1. Look up the truck by its IoT device ID
     result = await db.execute(
         select(Truck).where(Truck.iot_device_id == device_id)

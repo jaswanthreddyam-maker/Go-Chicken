@@ -38,21 +38,33 @@ async def upload_profile_picture(file: UploadFile, tenant_id: str) -> str:
     Raises:
         HTTPException: If the file type is invalid or upload fails.
     """
-    # Validate file type
-    allowed_types = {"image/jpeg", "image/png", "image/webp", "image/gif"}
-    if file.content_type not in allowed_types:
+    MAGIC_BYTES = {
+        b"\xff\xd8\xff": "image/jpeg",
+        b"\x89PNG": "image/png",
+        b"RIFF": "image/webp",
+        b"GIF8": "image/gif",
+    }
+
+    def _validate_image_magic(data: bytes) -> bool:
+        for magic in MAGIC_BYTES:
+            if data.startswith(magic):
+                return True
+        return False
+
+    MAX_SIZE = 5 * 1024 * 1024
+    chunks = []
+    total = 0
+    while chunk := await file.read(8192):
+        total += len(chunk)
+        if total > MAX_SIZE:
+            raise HTTPException(status_code=413, detail="File exceeds 5 MB limit")
+        chunks.append(chunk)
+    contents = b"".join(chunks)
+
+    if not contents or not _validate_image_magic(contents[:12]):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Invalid file type '{file.content_type}'. Allowed: JPEG, PNG, WebP, GIF.",
-        )
-
-    # Validate file size (max 5 MB)
-    contents = await file.read()
-    max_size = 5 * 1024 * 1024  # 5 MB
-    if len(contents) > max_size:
-        raise HTTPException(
-            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
-            detail="File size exceeds 5 MB limit.",
+            detail="Invalid file type. File signature does not match an allowed image (JPEG, PNG, WebP, GIF).",
         )
 
     _configure_cloudinary()

@@ -14,7 +14,7 @@ Authentication flow:
 import logging
 import uuid
 
-from fastapi import Depends, Header, HTTPException, status
+from fastapi import Depends, Header, HTTPException, status, Request
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -25,50 +25,50 @@ logger = logging.getLogger("go_chicken.auth")
 
 
 async def get_current_tenant(
+    request: Request,
     db: AsyncSession = Depends(get_db),
     authorization: str | None = Header(None, alias="Authorization"),
-    x_tenant_id: str | None = Header(None, alias="X-Tenant-ID"),
 ) -> uuid.UUID:
-    """Resolve the current tenant from server-controlled headers.
-
-    Priority:
-      1. JWT ``Authorization`` bearer token (future — decode & extract tenant claim).
-      2. ``X-Tenant-ID`` header set by an upstream gateway or internal caller.
-      3. Dev fallback: first tenant row in the database (single-tenant convenience).
+    """Resolve the current tenant from the JWT Authorization header or cookie.
 
     Raises:
-        HTTPException 401: If no tenant can be resolved.
+        HTTPException 401: If no valid token is provided.
     """
 
-    # ── 1. JWT Bearer Token (future-proofed) ──────────────────────────
+    token = None
     if authorization and authorization.startswith("Bearer "):
-        # TODO: Decode JWT and extract tenant_id claim once auth is wired.
-        # For now, treat the token as opaque and fall through.
-        pass
+        token = authorization.split(" ", 1)[1]
+    elif request.cookies.get("gc_auth"):
+        token = request.cookies.get("gc_auth")
 
-    # ── 2. Trusted internal header ────────────────────────────────────
-    if x_tenant_id:
-        try:
-            tenant_uuid = uuid.UUID(x_tenant_id)
-            # Verify the tenant actually exists in the DB
-            result = await db.execute(
-                select(Tenant.id).where(Tenant.id == tenant_uuid)
-            )
-            if result.scalar_one_or_none() is not None:
-                return tenant_uuid
-            else:
-                logger.warning(f"X-Tenant-ID header references non-existent tenant: {x_tenant_id}")
-        except ValueError:
-            logger.warning(f"Invalid UUID in X-Tenant-ID header: {x_tenant_id}")
-
-    # ── 3. Dev fallback: use the first (and usually only) tenant ──────
-    result = await db.execute(select(Tenant.id).limit(1))
-    first_tenant = result.scalar_one_or_none()
-    if first_tenant is not None:
-        logger.info(f"Auth dev-fallback: using first tenant {first_tenant}")
-        return first_tenant
-
-    raise HTTPException(
-        status_code=status.HTTP_401_UNAUTHORIZED,
-        detail="Unable to determine tenant. Provide a valid Authorization or X-Tenant-ID header.",
-    )
+    if not token:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Unable to determine tenant. Provide a valid Authorization Bearer token or gc_auth cookie.",
+        )
+    
+    # Import jwt here to avoid circular imports if any, or at the top of file
+    import jwt
+    from core.config import get_settings
+    
+    settings = get_settings()
+    
+    try:
+        payload = jwt.decode(token, settings.JWT_SECRET, algorithms=["HS256"])
+        tenant_uuid = uuid.UUID(payload["tid"])
+        
+        # Verify the tenant actually exists in the DB
+        result = await db.execute(
+            select(Tenant.id).where(Tenant.id == tenant_uuid)
+        )
+        if result.scalar_one_or_none() is not None:
+            return tenant_uuid
+        else:
+            logger.warning(f"JWT token references non-existent tenant: {tenant_uuid}")
+            raise HTTPException(status_code=401, detail="Invalid tenant")
+            
+    except jwt.ExpiredSignatureError:
+        raise HTTPException(status_code=401, detail="Token expired")
+    except (jwt.InvalidTokenError, KeyError, ValueError) as e:
+        logger.warning(f"Invalid JWT: {e}")
+        raise HTTPException(status_code=401, detail="Invalid token")

@@ -9,12 +9,14 @@ class Settings(BaseSettings):
     APP_NAME: str = "Go Chicken API"
     APP_VERSION: str = "0.1.0"
     DEBUG: bool = False
+    JWT_SECRET: str = ""  # REQUIRED — set in .env
 
     # PostgreSQL (asyncpg)
     DATABASE_URL: str = "postgresql+asyncpg://postgres:postgres@localhost:5432/go_chicken"
 
     # IoT Thresholds
     TEMPERATURE_ALERT_THRESHOLD: float = 35.0  # Celsius — triggers driver alert above this
+    IOT_API_KEY: str = "default_iot_key_please_change"
 
     # Ollama AI
     OLLAMA_BASE_URL: str = "http://localhost:11434"

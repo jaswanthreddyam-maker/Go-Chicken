@@ -22,10 +22,13 @@ export function LanguageProvider({ children }) {
         }
         API_BASE = API_BASE.replace(/\/+$/, "");
         if (!API_BASE.endsWith("/api/v1")) API_BASE += "/api/v1";
+        const userStr = localStorage.getItem('gc_user');
+        if (!userStr) {
+          setIsLoaded(true);
+          return;
+        }
         const res = await fetch(`${API_BASE}/profile`, {
-          headers: {
-            'Authorization': `Bearer dev-token`
-          }
+          credentials: "include"
         });
         if (res.ok) {
           const data = await res.json();

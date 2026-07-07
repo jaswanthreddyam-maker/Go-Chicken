@@ -11,3 +11,6 @@ pgvector
 alembic
 cloudinary
 python-multipart
+PyJWT
+bcrypt
+slowapi

@@ -79,12 +79,14 @@ async def classify_message(message: str) -> MessageClassification | None:
             )
             return None
 
+        safe_message = _sanitize_for_llm(message)
+
         async with httpx.AsyncClient() as client:
             response = await client.post(
                 f"{settings.OLLAMA_BASE_URL}/api/generate",
                 json={
                     "model": settings.OLLAMA_CHAT_MODEL,
-                    "prompt": f'Classify this WhatsApp message:\n"{message}"',
+                    "prompt": f'Classify this WhatsApp message:\n"{safe_message}"',
                     "system": CLASSIFY_SYSTEM_PROMPT,
                     "stream": False,
                     # Lower temperature for more deterministic classification
@@ -157,6 +159,18 @@ async def is_ollama_available() -> bool:
 
 
 # ── Internal Helpers ───────────────────────────────────────────
+
+
+def _sanitize_for_llm(text: str, max_len: int = 200) -> str:
+    """Strip control characters and truncate for LLM safety to prevent prompt injection."""
+    import unicodedata
+    cleaned = "".join(
+        c for c in text[:max_len]
+        if unicodedata.category(c)[0] != "C"  # Remove control chars
+    )
+    # Remove common injection patterns
+    cleaned = re.sub(r"(?i)(ignore|forget|disregard).*(previous|above|prior).*instructions?", "[filtered]", cleaned)
+    return cleaned
 
 
 def _parse_classification_json(text: str) -> MessageClassification | None:

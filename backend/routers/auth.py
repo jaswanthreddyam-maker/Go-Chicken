@@ -13,13 +13,17 @@ import json
 import base64
 import logging
 import os
+import jwt
+import bcrypt
 
-from fastapi import APIRouter, Depends, HTTPException, status, Request
+from fastapi import APIRouter, Depends, HTTPException, status, Request, Response
 from fastapi.responses import RedirectResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 import httpx
 from urllib.parse import urlencode
+from slowapi import Limiter
+from slowapi.util import get_remote_address
 
 from core.database import get_db
 from core.config import get_settings
@@ -31,46 +35,55 @@ from schemas.auth import SignupRequest, LoginRequest, AuthResponse
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/v1/auth", tags=["Authentication"])
+limiter = Limiter(key_func=get_remote_address)
 
-# ── Simple JWT-like signing (HMAC-SHA256) ─────────────────────────────
 # In production, swap for python-jose / PyJWT with RS256.
-_JWT_SECRET = secrets.token_hex(32)
-_JWT_EXPIRY_SECONDS = 60 * 60 * 24 * 7  # 7 days
 
+
+def _mask_pii(value: str) -> str:
+    if not value: return "***"
+    if "@" in value:
+        user, domain = value.split("@", 1)
+        return f"{user[:2]}***@{domain}" if len(user) > 2 else f"***@{domain}"
+    if len(value) > 4:
+        return value[:3] + "***" + value[-2:]
+    return "***"
 
 def _hash_password(password: str) -> str:
-    """Hash a password with a random salt using SHA-256."""
-    salt = secrets.token_hex(16)
-    digest = hashlib.sha256(f"{salt}:{password}".encode()).hexdigest()
-    return f"{salt}:{digest}"
+    """Hash a password using bcrypt."""
+    return bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode()
 
 
 def _verify_password(password: str, stored_hash: str) -> bool:
-    """Verify a password against a stored salt:hash pair."""
-    if ":" not in stored_hash:
+    """Verify a password against a stored bcrypt hash or legacy SHA256 hash."""
+    try:
+        # Legacy SHA256 format
+        if ":" in stored_hash:
+            salt, digest = stored_hash.split(":", 1)
+            return hmac.compare_digest(
+                hashlib.sha256(f"{salt}:{password}".encode()).hexdigest(),
+                digest,
+            )
+        return bcrypt.checkpw(password.encode(), stored_hash.encode())
+    except Exception:
         return False
-    salt, digest = stored_hash.split(":", 1)
-    return hmac.compare_digest(
-        hashlib.sha256(f"{salt}:{password}".encode()).hexdigest(),
-        digest,
-    )
 
 
 def _create_token(user_id: uuid.UUID, tenant_id: uuid.UUID) -> str:
-    """Create a simple signed token (base64 payload + HMAC signature)."""
+    """Create a signed JWT token using PyJWT."""
+    settings = get_settings()
     payload = {
         "sub": str(user_id),
         "tid": str(tenant_id),
-        "exp": int(time.time()) + _JWT_EXPIRY_SECONDS,
+        "exp": int(time.time()) + (60 * 60 * 24 * 7),  # 7 days
     }
-    payload_bytes = base64.urlsafe_b64encode(json.dumps(payload).encode())
-    sig = hmac.new(_JWT_SECRET.encode(), payload_bytes, hashlib.sha256).hexdigest()
-    return f"{payload_bytes.decode()}.{sig}"
+    return jwt.encode(payload, settings.JWT_SECRET, algorithm="HS256")
 
 
 # ── Signup ────────────────────────────────────────────────────────────
 @router.post("/signup", response_model=AuthResponse, status_code=status.HTTP_201_CREATED)
-async def signup(body: SignupRequest, db: AsyncSession = Depends(get_db)):
+@limiter.limit("5/minute")
+async def signup(request: Request, body: SignupRequest, response: Response, db: AsyncSession = Depends(get_db)):
     """Register a new business (tenant) and its admin user."""
 
     try:
@@ -114,7 +127,12 @@ async def signup(body: SignupRequest, db: AsyncSession = Depends(get_db)):
         await db.refresh(user)
 
         token = _create_token(user.id, tenant.id)
-        logger.info("New signup: %s (tenant %s)", body.phone, tenant.id)
+        logger.info("New signup: %s (tenant %s)", _mask_pii(body.phone), tenant.id)
+        
+        response.set_cookie(
+            "gc_auth", token,
+            max_age=60*60*24*7, httponly=True, secure=True, samesite="lax"
+        )
 
         return AuthResponse(
             access_token=token,
@@ -126,21 +144,17 @@ async def signup(body: SignupRequest, db: AsyncSession = Depends(get_db)):
     except HTTPException:
         raise
     except Exception as e:
-        logger.warning("Database offline during signup (%s). Using fallback demo session.", e)
-        demo_tenant = uuid.uuid4()
-        demo_user = uuid.uuid4()
-        return AuthResponse(
-            access_token=_create_token(demo_user, demo_tenant),
-            user_id=demo_user,
-            tenant_id=demo_tenant,
-            name=body.admin_name if hasattr(body, "admin_name") else "Demo Admin",
-            role="admin",
+        logger.error("Database error during signup: %s", e)
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Service temporarily unavailable. Please try again later.",
         )
 
 
 # ── Login ─────────────────────────────────────────────────────────────
 @router.post("/login", response_model=AuthResponse)
-async def login(body: LoginRequest, db: AsyncSession = Depends(get_db)):
+@limiter.limit("10/minute")
+async def login(request: Request, body: LoginRequest, response: Response, db: AsyncSession = Depends(get_db)):
     """Authenticate with phone + password."""
     try:
         result = await db.execute(select(User).where(User.phone == body.phone))
@@ -159,7 +173,12 @@ async def login(body: LoginRequest, db: AsyncSession = Depends(get_db)):
             )
 
         token = _create_token(user.id, user.tenant_id)
-        logger.info("Login: %s", body.phone)
+        logger.info("Login: %s", _mask_pii(body.phone))
+
+        response.set_cookie(
+            "gc_auth", token,
+            max_age=60*60*24*7, httponly=True, secure=True, samesite="lax"
+        )
 
         return AuthResponse(
             access_token=token,
@@ -171,16 +190,18 @@ async def login(body: LoginRequest, db: AsyncSession = Depends(get_db)):
     except HTTPException:
         raise
     except Exception as e:
-        logger.warning("Database offline during login (%s). Using fallback demo session.", e)
-        demo_tenant = uuid.uuid4()
-        demo_user = uuid.uuid4()
-        return AuthResponse(
-            access_token=_create_token(demo_user, demo_tenant),
-            user_id=demo_user,
-            tenant_id=demo_tenant,
-            name="Demo User",
-            role="admin",
+        logger.error("Database error during login: %s", e)
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Service temporarily unavailable. Please try again later.",
         )
+
+
+@router.post("/logout")
+async def logout(response: Response):
+    """Clear the HTTP-only auth cookie."""
+    response.delete_cookie("gc_auth", httponly=True, secure=True, samesite="lax")
+    return {"message": "Successfully logged out"}
 
 
 def _get_redirect_uri(request: Request) -> str:
@@ -195,6 +216,7 @@ def _get_redirect_uri(request: Request) -> str:
 async def google_login(request: Request):
     """Initiate Google OAuth 2.0 authorization flow."""
     settings = get_settings()
+    state = secrets.token_urlsafe(32)
     redirect_uri = _get_redirect_uri(request)
     params = {
         "client_id": settings.GOOGLE_CLIENT_ID,
@@ -203,16 +225,27 @@ async def google_login(request: Request):
         "scope": "openid email profile",
         "access_type": "offline",
         "prompt": "select_account",
+        "state": state,
     }
     url = f"https://accounts.google.com/o/oauth2/v2/auth?{urlencode(params)}"
-    return RedirectResponse(url=url)
+    response = RedirectResponse(url=url)
+    response.set_cookie(
+        "oauth_state", state,
+        max_age=600, httponly=True, secure=True, samesite="lax"
+    )
+    return response
 
 
 @router.get("/google/callback")
-async def google_callback(request: Request, code: str = None, error: str = None, db: AsyncSession = Depends(get_db)):
+async def google_callback(request: Request, code: str = None, error: str = None, state: str = None, db: AsyncSession = Depends(get_db)):
     """Handle Google OAuth callback, exchange code for token, and authenticate user."""
     settings = get_settings()
     frontend_login = f"{settings.FRONTEND_URL}/login"
+
+    cookie_state = request.cookies.get("oauth_state")
+    if not state or state != cookie_state:
+        logger.warning("Invalid OAuth state. Potential CSRF.")
+        return RedirectResponse(f"{frontend_login}?error=Invalid OAuth state")
 
     if error or not code:
         logger.warning(f"Google OAuth error or missing code: {error}")
@@ -292,23 +325,27 @@ async def google_callback(request: Request, code: str = None, error: str = None,
         db.add(profile)
         await db.commit()
         await db.refresh(user)
-        logger.info("New Google OAuth signup: %s (tenant %s)", email, tenant.id)
+        logger.info("New Google OAuth signup: %s (tenant %s)", _mask_pii(email), tenant.id)
     else:
         # If user existed by email without google_id linked, link it now
         if not user.google_id:
             user.google_id = google_id
             await db.commit()
-        logger.info("Google OAuth login: %s", email)
+        logger.info("Google OAuth login: %s", _mask_pii(email))
 
     token = _create_token(user.id, user.tenant_id)
 
     # 4. Redirect to frontend callback page with auth data
     params = {
-        "token": token,
         "user_id": str(user.id),
         "tenant_id": str(user.tenant_id),
         "name": user.name,
         "role": user.role.value,
     }
-    return RedirectResponse(f"{settings.FRONTEND_URL}/auth/callback?{urlencode(params)}")
+    response = RedirectResponse(f"{settings.FRONTEND_URL}/auth/callback?{urlencode(params)}")
+    response.set_cookie(
+        "gc_auth", token,
+        max_age=60*60*24*7, httponly=True, secure=True, samesite="lax"
+    )
+    return response
 

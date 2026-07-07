@@ -5,7 +5,15 @@ from core.config import get_settings
 
 DATABASE_URL = os.getenv("DATABASE_URL", get_settings().DATABASE_URL)
 
-engine = create_async_engine(DATABASE_URL, echo=True)
+engine = create_async_engine(
+    DATABASE_URL, 
+    echo=get_settings().DEBUG,
+    pool_size=5,
+    max_overflow=10,
+    pool_timeout=30,
+    pool_recycle=1800,
+    pool_pre_ping=True,
+)
 AsyncSessionLocal = sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
 from models.base import Base
 
