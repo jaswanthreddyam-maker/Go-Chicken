@@ -122,8 +122,7 @@ async def startup():
     logger.info("Starting up Go Chicken API...")
     # 1. Critical configuration check
     if not settings.JWT_SECRET:
-        logger.critical("JWT_SECRET is missing! Backend refusing to start.")
-        sys.exit(1)
+        logger.warning("JWT_SECRET is missing! Authentication endpoints will fail, but booting anyway.")
         
     # 2. Database check
     try:
