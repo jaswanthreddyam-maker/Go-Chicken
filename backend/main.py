@@ -10,7 +10,7 @@ import logging
 from fastapi import FastAPI
 from core.database import engine, Base
 import models  # Import all models to ensure they are attached to Base.metadata
-from routers import orders, whatsapp, analytics, pricing, trucks, profile, auth  # Import routers
+from routers import orders, whatsapp, analytics, pricing, trucks, profile, auth, inventory, quotes, events  # Import routers
 from api.v1 import khata as khata_v1  # Import Khata ledger router
 from sqlalchemy import text
 from fastapi.middleware.cors import CORSMiddleware
@@ -20,6 +20,7 @@ logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s | %(name)s | %(levelname)s | %(message)s",
 )
+logger = logging.getLogger("go_chicken.main")
 
 app = FastAPI(
     title="Go Chicken API",
@@ -69,10 +70,13 @@ app.include_router(orders.router)
 app.include_router(whatsapp.router)
 app.include_router(analytics.router)
 app.include_router(pricing.router)
+app.include_router(quotes.router)
 app.include_router(trucks.router)
 app.include_router(profile.router)
 app.include_router(auth.router)
+app.include_router(inventory.router)
 app.include_router(khata_v1.router, prefix="/api/v1/khata", tags=["Khata Ledger"])
+app.include_router(events.router, prefix="/api/v1")
 
 
 # Root alias routes in case Meta webhook is configured without /api/v1 prefix
@@ -115,9 +119,28 @@ async def root_login(request: Request, body: LoginRequest, db: AsyncSession = De
 
 @app.on_event("startup")
 async def startup():
-    # Table auto-creation removed in favor of Alembic migrations.
-    # Please use `alembic upgrade head` to manage the schema.
-    pass
+    logger.info("Starting up Go Chicken API...")
+    # 1. Critical configuration check
+    if not settings.JWT_SECRET:
+        logger.critical("JWT_SECRET is missing! Backend refusing to start.")
+        sys.exit(1)
+        
+    # 2. Database check
+    try:
+        async with engine.begin() as conn:
+            await conn.execute(text("SELECT 1"))
+        logger.info("Database connection: OK")
+    except Exception as e:
+        logger.critical(f"Database connection failed! {e}")
+        sys.exit(1)
+        
+    # 3. Optional Services warning
+    if settings.AI_PROVIDER.lower() == "groq" and not settings.GROQ_API_KEY:
+        logger.warning("GROQ_API_KEY is missing! AI extraction will fail.")
+    if not settings.WHATSAPP_VERIFY_TOKEN or not settings.WHATSAPP_API_TOKEN:
+        logger.warning("WhatsApp tokens are missing! Meta webhook will fail.")
+        
+    logger.info("Startup validation complete.")
 
 @app.get("/")
 async def root():
@@ -126,9 +149,39 @@ async def root():
 @app.get("/health")
 async def health_check():
     from fastapi.responses import JSONResponse
+    checks = {
+        "database": "unhealthy",
+        "supabase": "healthy" if "supabase" in settings.DATABASE_URL else "N/A",
+        "ai": "healthy" if settings.AI_PROVIDER else "unconfigured",
+        "meta": "configured" if settings.WHATSAPP_VERIFY_TOKEN else "unconfigured",
+        "n8n": "configured" if hasattr(settings, 'N8N_WEBHOOK_SECRET') else "unconfigured"
+    }
+    
     try:
         async with engine.begin() as conn:
             await conn.execute(text("SELECT 1"))
-        return {"status": "healthy", "db": "connected"}
+        checks["database"] = "healthy"
+        return {"status": "healthy", "checks": checks, "version": settings.APP_VERSION}
     except Exception as e:
-        return JSONResponse(status_code=503, content={"status": "unhealthy", "db": "disconnected"})
+        checks["database"] = "unhealthy"
+        return JSONResponse(status_code=503, content={"status": "unhealthy", "checks": checks, "version": settings.APP_VERSION})
+
+@app.get("/ready")
+async def ready_probe():
+    """Kubernetes-style readiness probe."""
+    return {"status": "ready"}
+
+@app.get("/system/info")
+async def system_info():
+    """System info for debugging. Hidden unless DEMO_MODE is true."""
+    from fastapi import HTTPException
+    if not getattr(settings, 'DEMO_MODE', False):
+        raise HTTPException(status_code=403, detail="System info is disabled outside demo mode.")
+        
+    return {
+        "environment": getattr(settings, 'ENVIRONMENT', 'development'),
+        "ai_provider": getattr(settings, 'AI_PROVIDER', 'unknown'),
+        "database": "supabase" if "supabase" in settings.DATABASE_URL else "local",
+        "build": "2026-07-16",
+        "version": settings.APP_VERSION
+    }

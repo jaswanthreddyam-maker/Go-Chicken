@@ -17,7 +17,11 @@ class MessageClassification(BaseModel):
         {"intent": "INQUIRY", "item": null, "quantity_kg": null, "confidence": 0.0}
     """
 
-    intent: Literal["ORDER", "INQUIRY", "GREETING"] = Field(
+    intent: Literal[
+        "ORDER", "PRICE_INQUIRY", "ORDER_STATUS", "QUOTE",
+        "GREETING", "HELP", "HANDOFF", "REPEAT_ORDER",
+        "KHATA", "OFF_TOPIC"
+    ] = Field(
         ...,
         description="Classified intent of the WhatsApp message",
     )

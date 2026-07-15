@@ -42,4 +42,4 @@ class ClassificationLog(Base):
     confidence = Column(Float, default=0.0)              # Ollama's confidence (0.0 if failed)
     order_source = Column(String(20), nullable=False)    # "ollama" or "regex" — which won
     latency_ms = Column(Integer, default=0)              # Ollama response time in ms
-    created_at = Column(DateTime, server_default=func.now())
+    created_at = Column(DateTime(timezone=True), server_default=func.now())

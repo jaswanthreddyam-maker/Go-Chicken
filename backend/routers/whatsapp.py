@@ -14,6 +14,7 @@ import time
 import traceback
 import uuid
 from decimal import Decimal
+from datetime import datetime, timezone
 
 import httpx
 from fastapi import APIRouter, BackgroundTasks, Depends, Request, Response
@@ -23,7 +24,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.config import get_settings
 from core.database import get_db, AsyncSessionLocal
-from core.ollama_client import classify_message
+from core.ai_provider import classify_message
 from core.pricing_service import get_all_prices, get_price_for_item
 from models.classification_log import ClassificationLog
 from models.order import Order
@@ -73,18 +74,17 @@ async def verify_webhook(request: Request):
 
 @router.post("/webhook")
 @router.post("/webhook/")
-async def handle_webhook(
-    payload: WhatsAppWebhookPayload,
-    background_tasks: BackgroundTasks,
-):
-    """Receive incoming messages from Meta WhatsApp Cloud API.
-
-    Returns 200 OK immediately, then processes messages in background.
-    This is critical — Meta will retry (and eventually disable) webhooks
-    that don't respond quickly.
-    """
+async def process_webhook(request: Request, background_tasks: BackgroundTasks):
+    try:
+        raw_body = await request.json()
+        logger.info(f"RAW WEBHOOK PAYLOAD: {raw_body}")
+        payload = WhatsAppWebhookPayload(**raw_body)
+    except Exception as e:
+        logger.error(f"Failed to parse webhook payload: {e}")
+        return Response(content="Bad Request", status_code=400)
+    
     background_tasks.add_task(process_webhook_payload, payload)
-    return {"status": "ok"}
+    return Response(content="EVENT_RECEIVED", media_type="text/plain")
 
 
 # ── Background Processing ──────────────────────────────────────
@@ -170,398 +170,265 @@ async def process_webhook_payload(payload: WhatsAppWebhookPayload):
         )
 
 
-# ── Message Handlers ───────────────────────────────────────────
+# ── Unified Message Handler ────────────────────────────────────────
 
-
-async def _handle_text_message(
+async def _process_conversation_turn(
     sender_phone: str,
     sender_name: str,
-    message_body: str,
     phone_number_id: str,
+    message_text: str | None = None,
+    button_id: str | None = None
 ):
-    """Process a text message — classify intent via Ollama, fall back to regex.
-
-    Classification Pipeline:
-        1. Try Ollama LLM for intent classification (ORDER / INQUIRY / GREETING)
-        2. If Ollama returns ORDER with high confidence → use its extracted data
-        3. If Ollama fails or confidence is low → fall back to regex parsing
-        4. If neither method finds an order → log and skip
-
-    Monitoring:
-        Every classification attempt is persisted to classification_logs with
-        latency_ms and confidence for Brain Health dashboard analytics.
-    """
     try:
-        item_type = None
-        quantity_kg = Decimal("0")
-        order_source = "regex"  # Default — overridden if Ollama succeeds
-        classified_intent = None
-        classified_confidence = 0.0
-        ollama_latency_ms = 0
-
-        # ── Step 1: Try Ollama Classification ──────────────────────
-        start_time = time.monotonic()
-        classification = await classify_message(message_body)
-        ollama_latency_ms = int((time.monotonic() - start_time) * 1000)
-
-        if classification and classification.intent == "ORDER":
-            classified_intent = classification.intent
-            classified_confidence = classification.confidence
-
-            if classification.confidence >= settings.OLLAMA_CONFIDENCE_THRESHOLD:
-                # Ollama is confident this is an order — use its extracted data
-                item_type = classification.item or "Live Bird"
-                quantity_kg = Decimal(str(classification.quantity_kg or 0))
-                order_source = "ollama"
-
-                logger.info(
-                    f"🤖 Ollama classified ORDER: {quantity_kg}kg {item_type} "
-                    f"(confidence: {classification.confidence:.2f}, "
-                    f"latency: {ollama_latency_ms}ms) "
-                    f"from {sender_name} ({sender_phone})"
-                )
-            else:
-                # Ollama thinks it's an order but isn't confident
-                logger.info(
-                    f"🤖 Ollama low confidence ({classification.confidence:.2f}) "
-                    f"for '{message_body[:50]}' — falling back to regex "
-                    f"(latency: {ollama_latency_ms}ms)"
-                )
-
-        elif classification and classification.intent in ("INQUIRY", "GREETING"):
-            classified_intent = classification.intent
-            classified_confidence = classification.confidence
-
-            # Not an order — send appropriate auto-reply
-            logger.info(
-                f"🤖 Ollama classified as {classification.intent} "
-                f"(confidence: {classification.confidence:.2f}, "
-                f"latency: {ollama_latency_ms}ms) "
-                f"from {sender_name}: '{message_body[:80]}'"
-            )
-
-            # Persist classification log before sending reply
-            await _log_classification(
-                message=message_body,
-                intent=classified_intent,
-                confidence=classified_confidence,
-                order_source="ollama",
-                latency_ms=ollama_latency_ms,
-            )
-
-            # ── Auto-Reply: GREETING ──────────────────────────────
-            if classification.intent == "GREETING":
-                await _send_whatsapp_reply(
-                    phone_number_id=phone_number_id,
-                    to=sender_phone,
-                    message=(
-                        f"🐔 Welcome to *Go Chicken*, {sender_name}!\n\n"
-                        "How can we help you today?\n\n"
-                        "📦 *Place an order* — just tell us what you need\n"
-                        "   _Example: \"50kg live bird\"_\n\n"
-                        "💰 *Check prices* — type \"price\" or \"rate\"\n\n"
-                        "We deliver fresh poultry daily! 🚛"
-                    ),
-                )
-
-            # ── Auto-Reply: INQUIRY ───────────────────────────────
-            elif classification.intent == "INQUIRY":
-                async with AsyncSessionLocal() as db:
-                    prices = await get_all_prices(db)
-                live_bird_p = prices.get("Live Bird", Decimal(str(settings.PRICE_LIVE_BIRD)))
-                dressed_p = prices.get("Dressed", Decimal(str(settings.PRICE_DRESSED)))
-                skinless_p = prices.get("Skinless", Decimal(str(settings.PRICE_SKINLESS)))
-
-                await _send_whatsapp_reply(
-                    phone_number_id=phone_number_id,
-                    to=sender_phone,
-                    message=(
-                        "📋 *Today's Rates — Go Chicken*\n\n"
-                        f"🐔 Live Bird: *₹{live_bird_p:.0f}/kg*\n"
-                        f"🍗 Dressed: *₹{dressed_p:.0f}/kg*\n"
-                        f"🥩 Skinless: *₹{skinless_p:.0f}/kg*\n\n"
-                        "To place an order, just send:\n"
-                        "_\"50kg live bird\"_ or _\"30kg dressed\"_\n\n"
-                        "We'll confirm your order instantly! ✅"
-                    ),
-                )
-
-            return
-
-        else:
-            # Ollama returned None (unavailable, timeout, parse error)
-            logger.info(
-                "🤖 Ollama unavailable or failed — falling back to regex "
-                f"for message from {sender_name} ({sender_phone}) "
-                f"(latency: {ollama_latency_ms}ms)"
-            )
-
-        # ── Step 2: Regex Fallback (if Ollama didn't resolve it) ───
-        if order_source != "ollama":
-            quantity_kg = _parse_quantity(message_body)
-            item_type = _parse_item_type(message_body)
-
-            if quantity_kg > 0:
-                classified_intent = classified_intent or "ORDER"
-                logger.info(
-                    f"📐 Regex fallback parsed ORDER: {quantity_kg}kg {item_type} "
-                    f"from {sender_name} ({sender_phone})"
-                )
-            elif re.search(r"\b(hi|hello|hey|namaste|vanakkam|start|help)\b", message_body.lower()):
-                classified_intent = "GREETING"
-                logger.info(f"📐 Regex fallback parsed GREETING from {sender_name} ({sender_phone})")
-                await _send_whatsapp_reply(
-                    phone_number_id=phone_number_id,
-                    to=sender_phone,
-                    message=(
-                        f"🐔 Welcome to *Go Chicken*, {sender_name}!\n\n"
-                        "How can we help you today?\n\n"
-                        "📦 *Place an order* — just tell us what you need\n"
-                        "   _Example: \"50kg live bird\"_\n\n"
-                        "💰 *Check prices* — type \"price\" or \"rate\"\n\n"
-                        "We deliver fresh poultry daily! 🚛"
-                    ),
-                )
-                await _log_classification(
-                    message=message_body,
-                    intent=classified_intent,
-                    confidence=1.0,
-                    order_source="regex",
-                    latency_ms=ollama_latency_ms,
-                )
-                return
-            elif re.search(r"\b(price|rate|cost|entha|rate entha|rates|catalog|menu)\b", message_body.lower()):
-                classified_intent = "INQUIRY"
-                logger.info(f"📐 Regex fallback parsed INQUIRY from {sender_name} ({sender_phone})")
-                async with AsyncSessionLocal() as db:
-                    prices = await get_all_prices(db)
-                live_bird_p = prices.get("Live Bird", Decimal(str(settings.PRICE_LIVE_BIRD)))
-                dressed_p = prices.get("Dressed", Decimal(str(settings.PRICE_DRESSED)))
-                skinless_p = prices.get("Skinless", Decimal(str(settings.PRICE_SKINLESS)))
-
-                await _send_whatsapp_reply(
-                    phone_number_id=phone_number_id,
-                    to=sender_phone,
-                    message=(
-                        "📋 *Today's Rates — Go Chicken*\n\n"
-                        f"🐔 Live Bird: *₹{live_bird_p:.0f}/kg*\n"
-                        f"🍗 Dressed: *₹{dressed_p:.0f}/kg*\n"
-                        f"🥩 Skinless: *₹{skinless_p:.0f}/kg*\n\n"
-                        "To place an order, just send:\n"
-                        "_\"50kg live bird\"_ or _\"30kg dressed\"_\n\n"
-                        "We'll confirm your order instantly! ✅"
-                    ),
-                )
-                await _log_classification(
-                    message=message_body,
-                    intent=classified_intent,
-                    confidence=1.0,
-                    order_source="regex",
-                    latency_ms=ollama_latency_ms,
-                )
-                return
-
-        # ── Step 3: Create Order (if either method found one) ──────
-        if quantity_kg > 0:
-            async with AsyncSessionLocal() as db:
-                # 3a. Look up retailer by phone or whatsapp_id
-                stmt = select(User).where(
+        async with AsyncSessionLocal() as db:
+            # 1. Look up User
+            result = await db.execute(
+                select(User).where(
                     User.role == UserRole.RETAILER,
-                    (User.phone == sender_phone) | (User.whatsapp_id == sender_phone),
+                    (User.phone == sender_phone) | (User.whatsapp_id == sender_phone)
                 )
-                res = await db.execute(stmt)
-                retailer = res.scalar_one_or_none()
+            )
+            user = result.scalars().first()
+            if not user:
+                from core.whatsapp_i18n import get_message
+                await _send_whatsapp_reply(
+                    phone_number_id, sender_phone, 
+                    get_message("UNREGISTERED", "en", phone=sender_phone)
+                )
+                return
 
-                if not retailer:
-                    logger.warning(
-                        f"⚠️ Unregistered sender {sender_phone} attempted to place an order ({quantity_kg}kg {item_type}). Rejecting."
-                    )
+            from core.conversation_service import ConversationService
+            state = await ConversationService.get_or_create_state(db, user)
+
+            # 2. Check for Session Timeout
+            if await ConversationService.reset_if_expired(db, state):
+                from core.whatsapp_i18n import get_message
+                await _send_whatsapp_reply(
+                    phone_number_id, sender_phone,
+                    get_message("SESSION_EXPIRED", state.language)
+                )
+
+            # Normalize text for global commands
+            text_lower = (message_text or "").strip().lower()
+
+            # 3. Handle Global Interruption Commands (Text or Button)
+            is_global_cancel = text_lower in ["cancel", "stop", "abort"] or button_id == "cancel_order"
+            is_global_menu = text_lower in ["menu", "home"] or button_id == "menu_home"
+            is_global_help = text_lower in ["help"] or button_id == "menu_help"
+
+            if is_global_cancel or is_global_menu or is_global_help:
+                await ConversationService.reset_state(db, state)
+                from core.whatsapp_i18n import get_message
+                if is_global_cancel:
                     await _send_whatsapp_reply(
-                        phone_number_id=phone_number_id,
-                        to=sender_phone,
-                        message=(
-                            f"⚠️ *Unregistered Number:* Your phone number ({sender_phone}) is not registered as a Go Chicken retailer.\n\n"
-                            "Please contact your wholesaler / Main Boss to register your shop and activate digital ordering. 🚛"
-                        ),
+                        phone_number_id, sender_phone, get_message("CANCEL_OPERATION", state.language)
                     )
-                    await _log_classification(
-                        message=message_body,
-                        intent=classified_intent,
-                        confidence=classified_confidence,
-                        order_source=order_source,
-                        latency_ms=ollama_latency_ms,
+                if is_global_help or is_global_menu:
+                    await _send_whatsapp_interactive_reply(
+                        phone_number_id, sender_phone, 
+                        get_message("MAIN_MENU", state.language), 
+                        ConversationService.get_main_menu_buttons()
+                    )
+                return
+
+            # If user has no language, force language selection
+            if not state.language and not user.preferred_language:
+                state.state = "AWAITING_LANGUAGE"
+                await db.commit()
+
+            # 4. If in an active flow (state != IDLE), delegate to state machine
+            if state.state != "IDLE":
+                actions = await ConversationService.process_deterministic_turn(
+                    db, state, user, message_text or "", button_id
+                )
+                await _execute_actions(phone_number_id, sender_phone, actions)
+                return
+
+            # 5. Handle Menu Buttons (IDLE state)
+            if button_id == "menu_order":
+                state.state = "AWAITING_PRODUCT"
+                await db.commit()
+                from core.whatsapp_i18n import get_message
+                await _send_whatsapp_interactive_reply(
+                    phone_number_id, sender_phone,
+                    get_message("ASK_PRODUCT", state.language),
+                    ConversationService.get_product_buttons()
+                )
+                return
+            elif button_id == "menu_prices":
+                from core.whatsapp_i18n import get_message
+                from core.pricing_service import get_all_prices
+                prices = await get_all_prices(db)
+                live_bird = prices.get("Live Bird", Decimal("180.00"))
+                dressed = prices.get("Dressed", Decimal("250.00"))
+                skinless = prices.get("Skinless", Decimal("320.00"))
+                
+                msg = f"🐔 Live Bird: ₹{live_bird}/kg\n🍗 Dressed: ₹{dressed}/kg\n🥩 Skinless: ₹{skinless}/kg"
+                await _send_whatsapp_reply(phone_number_id, sender_phone, msg)
+                return
+            elif button_id == "menu_khata":
+                from core.whatsapp_i18n import get_message
+                from models.khata import KhataTransaction
+                res = await db.execute(select(KhataTransaction).where(KhataTransaction.retailer_id == user.id).order_by(KhataTransaction.created_at.desc()).limit(1))
+                last_tx = res.scalars().first()
+                balance = last_tx.running_balance if last_tx else Decimal("0.00")
+                await _send_whatsapp_reply(phone_number_id, sender_phone, get_message("KHATA_SUMMARY", state.language, balance=balance, last_payment="0", due_count="0"))
+                return
+
+            # 6. IDLE state + Text Message -> Use Ollama Intent Classification
+            if message_text:
+                start_time = time.monotonic()
+                classification = await classify_message(message_text)
+                latency_ms = int((time.monotonic() - start_time) * 1000)
+
+                if not classification:
+                    from core.whatsapp_i18n import get_message
+                    await _send_whatsapp_interactive_reply(
+                        phone_number_id, sender_phone, 
+                        get_message("RECOVERY_MENU", state.language), 
+                        ConversationService.get_main_menu_buttons()
                     )
                     return
 
-                # 3b. Query latest Khata transaction for retailer's balance
-                txn_res = await db.execute(
-                    select(KhataTransaction)
-                    .where(KhataTransaction.retailer_id == retailer.id)
-                    .order_by(desc(KhataTransaction.created_at))
-                    .limit(1)
+                intent = classification.intent
+                confidence = classification.confidence
+
+                await _log_classification(
+                    message=message_text, intent=intent, confidence=confidence, 
+                    order_source="ollama", latency_ms=latency_ms
                 )
-                latest_txn = txn_res.scalar_one_or_none()
-                current_khata_balance = latest_txn.balance_after if latest_txn else Decimal("0.00")
+                
+                from core.event_broadcaster import broadcast_event
+                await broadcast_event("AI_EXTRACTION", {
+                    "intent": intent,
+                    "confidence": confidence,
+                    "language": state.language,
+                    "customer": user.name if user else "Retailer",
+                    "product": classification.entities.product,
+                    "quantity": float(classification.entities.quantity) if classification.entities.quantity else None,
+                    "timestamp": datetime.now(timezone.utc).isoformat()
+                })
 
-                price_per_kg = await get_price_for_item(db, item_type)
-                total_amount = quantity_kg * price_per_kg
+                from core.whatsapp_i18n import get_message
 
-                order = Order(
-                    phone_number=sender_phone,
-                    tenant_id=retailer.tenant_id,
-                    retailer_id=retailer.id,
-                    item_type=item_type,
-                    quantity_kg=quantity_kg,
-                    total_amount=total_amount,
-                    status="pending",
-                    order_source=order_source,
-                )
-                db.add(order)
-                await db.commit()
-                await db.refresh(order)
+                if intent == "ORDER":
+                    item = classification.item
+                    qty = classification.quantity_kg
+                    
+                    if item and qty and float(qty) > 0:
+                        # Smart slot filling: have both!
+                        state.pending_product = item
+                        state.pending_quantity = Decimal(str(qty))
+                        actions = await ConversationService.generate_order_preview(db, state, user)
+                        await _execute_actions(phone_number_id, sender_phone, [actions])
+                    elif item:
+                        # Have product, ask qty
+                        state.pending_product = item
+                        state.state = "AWAITING_QUANTITY"
+                        await db.commit()
+                        await _send_whatsapp_reply(
+                            phone_number_id, sender_phone, 
+                            get_message("ASK_QUANTITY", state.language, product=item)
+                        )
+                    else:
+                        # Don't have anything, ask product
+                        state.state = "AWAITING_PRODUCT"
+                        await db.commit()
+                        await _send_whatsapp_interactive_reply(
+                            phone_number_id, sender_phone, 
+                            get_message("ASK_PRODUCT", state.language), 
+                            ConversationService.get_product_buttons()
+                        )
 
-                logger.info(
-                    f"🐔 Order created! ID: {order.id} | "
-                    f"{quantity_kg}kg {item_type} from {sender_name} ({sender_phone}) "
-                    f"[source: {order_source}, retailer: {retailer.name}]"
-                )
+                elif intent == "PRICE_INQUIRY":
+                    from core.pricing_service import get_all_prices
+                    prices = await get_all_prices(db)
+                    live_bird = prices.get("Live Bird", Decimal("180.00"))
+                    dressed = prices.get("Dressed", Decimal("250.00"))
+                    skinless = prices.get("Skinless", Decimal("320.00"))
+                    msg = f"🐔 Live Bird: ₹{live_bird}/kg\n🍗 Dressed: ₹{dressed}/kg\n🥩 Skinless: ₹{skinless}/kg"
+                    await _send_whatsapp_interactive_reply(
+                        phone_number_id, sender_phone, msg,
+                        [{"id": "menu_order", "title": "Place Order"}]
+                    )
 
-            # ── Auto-Reply: ORDER Summary with Interactive Buttons ────
-            summary_msg = (
-                f"📦 *Order Summary*\n\n"
-                f"• *Item:* {item_type}\n"
-                f"• *Quantity:* {quantity_kg}kg\n"
-                f"• *Rate:* ₹{price_per_kg}/kg\n"
-                f"• *Total Amount:* ₹{total_amount:,.2f}\n\n"
-                f"💳 *Current Khata Balance:* ₹{current_khata_balance:,.2f}\n\n"
-                f"Please confirm or cancel your order below:"
-            )
-            buttons = [
-                {"id": f"confirm_order_{order.id}", "title": "Confirm Order"},
-                {"id": f"cancel_order_{order.id}", "title": "Cancel Order"},
-            ]
-            await _send_whatsapp_interactive_reply(
-                phone_number_id=phone_number_id,
-                to=sender_phone,
-                message_text=summary_msg,
-                buttons=buttons,
-            )
-        else:
-            logger.info(
-                f"🤔 Could not parse order from: '{message_body}' — "
-                f"no quantity detected by Ollama or regex. "
-                f"Sender: {sender_name} ({sender_phone})"
-            )
+                elif intent == "GREETING":
+                    live_bird = 180 # mock
+                    await _send_whatsapp_interactive_reply(
+                        phone_number_id, sender_phone, 
+                        get_message("MAIN_MENU", state.language), 
+                        ConversationService.get_main_menu_buttons()
+                    )
 
-        # ── Step 4: Persist classification log ─────────────────────
-        await _log_classification(
-            message=message_body,
-            intent=classified_intent,
-            confidence=classified_confidence,
-            order_source=order_source,
-            latency_ms=ollama_latency_ms,
-        )
+                elif intent == "HANDOFF":
+                    await _send_whatsapp_reply(
+                        phone_number_id, sender_phone, get_message("HANDOFF", state.language)
+                    )
+
+                elif intent == "ORDER_STATUS":
+                    # Mock finding an order
+                    await _send_whatsapp_reply(
+                        phone_number_id, sender_phone, get_message("NO_ACTIVE_ORDER", state.language)
+                    )
+                    
+                elif intent == "KHATA":
+                    from models.khata import KhataTransaction
+                    res = await db.execute(select(KhataTransaction).where(KhataTransaction.retailer_id == user.id).order_by(KhataTransaction.created_at.desc()).limit(1))
+                    last_tx = res.scalars().first()
+                    balance = last_tx.running_balance if last_tx else Decimal("0.00")
+                    await _send_whatsapp_reply(phone_number_id, sender_phone, get_message("KHATA_SUMMARY", state.language, balance=balance, last_payment="0", due_count="0"))
+
+                else:
+                    # OFF_TOPIC / HELP / REPEAT_ORDER / Unknown
+                    await _send_whatsapp_interactive_reply(
+                        phone_number_id, sender_phone, 
+                        get_message("RECOVERY_MENU", state.language), 
+                        ConversationService.get_main_menu_buttons()
+                    )
+            else:
+                # Idle state but no text message (e.g. unknown button)
+                pass
 
     except Exception as e:
-        logger.error(
-            f"🔥 Failed to handle message from {sender_phone}: {e}"
-        )
+        logger.error(f"🔥 Error processing turn for {sender_phone}: {e}", exc_info=True)
         await _log_error(
-            source="whatsapp_message_handler",
+            source="whatsapp_process_turn",
             error=e,
-            payload={
-                "sender_phone": sender_phone,
-                "sender_name": sender_name,
-                "message_body": message_body,
-            },
+            payload={"sender_phone": sender_phone, "message": message_text, "button": button_id},
         )
 
+async def _execute_actions(phone_number_id: str, to: str, actions: list[dict]):
+    """Execute generic actions returned by ConversationService."""
+    for action in actions:
+        if action["type"] == "text":
+            await _send_whatsapp_reply(phone_number_id, to, action["text"])
+        elif action["type"] == "interactive":
+            await _send_whatsapp_interactive_reply(
+                phone_number_id, to, action["text"], action.get("buttons", [])
+            )
+
+
+# ── Thin Wrappers ──────────────────────────────────────────────
+
+async def _handle_text_message(
+    sender_phone: str, sender_name: str, message_body: str, phone_number_id: str
+):
+    await _process_conversation_turn(
+        sender_phone=sender_phone,
+        sender_name=sender_name,
+        phone_number_id=phone_number_id,
+        message_text=message_body
+    )
 
 async def _handle_interactive_message(
-    sender_phone: str,
-    sender_name: str,
-    button_id: str,
-    button_title: str,
-    phone_number_id: str,
+    sender_phone: str, sender_name: str, button_id: str, button_title: str, phone_number_id: str
 ):
-    """Handle interactive button clicks (e.g. Confirm Order / Cancel Order)."""
-    if not (button_id.startswith("confirm_order_") or button_id.startswith("cancel_order_")):
-        logger.info(f"🔘 Unrecognized button ID '{button_id}' from {sender_phone} — ignoring.")
-        return
-
-    is_confirm = button_id.startswith("confirm_order_")
-    order_id_str = button_id.replace("confirm_order_", "").replace("cancel_order_", "")
-
-    try:
-        order_id = uuid.UUID(order_id_str)
-    except ValueError:
-        logger.warning(f"⚠️ Invalid UUID in button_id: {button_id}")
-        return
-
-    new_status = "confirmed" if is_confirm else "cancelled"
-
-    try:
-        async with AsyncSessionLocal() as db:
-            # 1. Atomic conditional UPDATE matching order_id, status='pending', and phone_number==sender_phone
-            stmt = (
-                update(Order)
-                .where(
-                    Order.id == order_id,
-                    Order.status == "pending",
-                    Order.phone_number == sender_phone,
-                )
-                .values(status=new_status)
-                .returning(Order)
-            )
-            result = await db.execute(stmt)
-            updated_order = result.scalar_one_or_none()
-
-            if updated_order:
-                await db.commit()
-                logger.info(f"✅ Order #{order_id} atomically updated to '{new_status}' by {sender_phone}")
-                reply_msg = (
-                    f"🎉 *Order Confirmed!*\n\nThank you, your order #{order_id} for {updated_order.quantity_kg}kg {updated_order.item_type} is locked in and will be dispatched as scheduled. 🚛✅"
-                    if is_confirm
-                    else f"❌ *Order Cancelled.*\n\nYour order #{order_id} has been cancelled. If this was a mistake, simply send us your order again!"
-                )
-                await _send_whatsapp_reply(phone_number_id=phone_number_id, to=sender_phone, message=reply_msg)
-                return
-
-            # 2. If updated_order is None, figure out why (sender mismatch or not pending)
-            existing_order = await db.get(Order, order_id)
-            if not existing_order:
-                logger.warning(f"⚠️ Order #{order_id} not found in DB.")
-                await _send_whatsapp_reply(phone_number_id=phone_number_id, to=sender_phone, message="⚠️ Order not found.")
-                return
-
-            if existing_order.phone_number != sender_phone:
-                logger.warning(f"🚨 Unauthorized button click attempt on Order #{order_id} from {sender_phone} (owner: {existing_order.phone_number})")
-                await _log_error(
-                    source="unauthorized_button_click",
-                    error=PermissionError("Unauthorized order modification attempt"),
-                    payload={"order_id": str(order_id), "sender_phone": sender_phone, "owner_phone": existing_order.phone_number},
-                )
-                await _send_whatsapp_reply(
-                    phone_number_id=phone_number_id,
-                    to=sender_phone,
-                    message="⚠️ You are not authorized to modify this order.",
-                )
-                return
-
-            # Order was found and belongs to sender, but status was not pending (already confirmed/cancelled/in transit)
-            logger.info(f"ℹ️ Order #{order_id} already has status '{existing_order.status}' — no changes made.")
-            await _send_whatsapp_reply(
-                phone_number_id=phone_number_id,
-                to=sender_phone,
-                message=f"ℹ️ This order is already *{existing_order.status}*. No changes were made.",
-            )
-    except Exception as e:
-        logger.error(f"🔥 Error handling interactive message from {sender_phone}: {e}")
-        await _log_error(
-            source="whatsapp_interactive_handler",
-            error=e,
-            payload={"sender_phone": sender_phone, "button_id": button_id},
-        )
+    await _process_conversation_turn(
+        sender_phone=sender_phone,
+        sender_name=sender_name,
+        phone_number_id=phone_number_id,
+        button_id=button_id
+    )
 
 
 # ── Classification Logging ─────────────────────────────────────

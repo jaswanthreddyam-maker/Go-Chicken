@@ -461,14 +461,17 @@ export default function LandingPage() {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
 
   useEffect(() => {
-    setMounted(true);
-    if (typeof window !== "undefined") {
-      sessionStorage.setItem("gc_visited_landing", "true");
-      const userStr = localStorage.getItem("gc_user");
-      if (userStr) {
-        setIsLoggedIn(true);
+    const t = setTimeout(() => {
+      setMounted(true);
+      if (typeof window !== "undefined") {
+        sessionStorage.setItem("gc_visited_landing", "true");
+        const userStr = localStorage.getItem("gc_user");
+        if (userStr) {
+          setIsLoggedIn(true);
+        }
       }
-    }
+    }, 0);
+    return () => clearTimeout(t);
   }, []);
 
   const handleGetStarted = (e, fallbackRoute = "/signup") => {

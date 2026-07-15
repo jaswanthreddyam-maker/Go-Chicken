@@ -32,7 +32,10 @@ export default function LoginPage() {
     password: "",
   });
 
-  useEffect(() => setMounted(true), []);
+  useEffect(() => {
+    const t = setTimeout(() => setMounted(true), 0);
+    return () => clearTimeout(t);
+  }, []);
 
   const update = (field, value) => {
     setForm((prev) => ({ ...prev, [field]: value }));

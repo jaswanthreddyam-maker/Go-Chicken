@@ -28,6 +28,35 @@ router = APIRouter(
 )
 
 
+@router.api_route("/status", methods=["GET", "POST"])
+async def get_order_status_by_phone(
+    phone: str = "",
+    tenant_id: uuid.UUID = Depends(get_current_tenant),
+    db: AsyncSession = Depends(get_db)
+):
+    """Fetch recent order status by phone number for WhatsApp/n8n inquiries."""
+    stmt = select(Order).where(Order.tenant_id == tenant_id)
+    if phone:
+        clean_phone = phone.replace("+", "").strip()
+        stmt = stmt.where(Order.phone_number.contains(clean_phone[-10:]))
+    stmt = stmt.order_by(Order.created_at.desc())
+    res = await db.execute(stmt)
+    order = res.scalars().first()
+    
+    if not order:
+        return {
+            "order_number": "N/A",
+            "status": "No active orders found for this phone number.",
+            "estimated_delivery": "-"
+        }
+        
+    return {
+        "order_number": f"ORD-{str(order.id)[:8].upper()}",
+        "status": order.status.title(),
+        "estimated_delivery": "Today by 5:00 PM"
+    }
+
+
 @router.post("/", response_model=OrderResponse, status_code=status.HTTP_201_CREATED)
 async def create_order(
     order_data: OrderCreate,

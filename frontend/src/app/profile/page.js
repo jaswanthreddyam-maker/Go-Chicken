@@ -8,6 +8,93 @@ import {
 } from 'lucide-react';
 import AnimatedButton from '@/components/AnimatedButton';
 import { useLanguage } from '@/context/LanguageContext';
+
+const SectionCard = ({ icon: Icon, title, children }) => {
+  const { t } = useLanguage();
+  return (
+    <div className="bg-white border border-[#EBEBEB] rounded-lg mb-8 overflow-hidden">
+      <div className="px-4 py-3 border-b border-[#EBEBEB] bg-[#FAFAFA] flex items-center gap-2">
+        <Icon size={16} className="text-[#111111]" />
+        <h2 className="text-xs font-extrabold uppercase tracking-wider text-[#111111]">{t(title)}</h2>
+      </div>
+      <div className="p-4 flex flex-col gap-4">
+        {children}
+      </div>
+    </div>
+  );
+};
+
+const AvatarUpload = ({ fileInputRef, handleFileChange, handleAvatarClick, isUploading, profilePicUrl, businessName }) => (
+  <>
+    <input
+      ref={fileInputRef}
+      type="file"
+      accept="image/jpeg,image/png,image/webp,image/gif"
+      className="hidden"
+      onChange={handleFileChange}
+      id="avatar-file-input"
+    />
+    <button
+      type="button"
+      onClick={handleAvatarClick}
+      disabled={isUploading}
+      className="relative w-16 h-16 rounded-full shrink-0 group focus:outline-none focus:ring-2 focus:ring-[#111111] focus:ring-offset-2 transition-all"
+      aria-label="Upload profile picture"
+      id="avatar-upload-btn"
+    >
+      {isUploading && (
+        <div className="absolute inset-0 rounded-full overflow-hidden">
+          <div
+            className="w-full h-full rounded-full bg-gradient-to-r from-[#E0E0E0] via-[#F5F5F5] to-[#E0E0E0]"
+            style={{
+              backgroundSize: '200% 100%',
+              animation: 'skeletonPulse 1.4s ease-in-out infinite',
+            }}
+          />
+          <div className="absolute inset-0 flex items-center justify-center">
+            <svg className="w-6 h-6 text-[#888888]" style={{ animation: 'spin 1s linear infinite' }} viewBox="0 0 24 24" fill="none">
+              <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeDasharray="50 100" />
+            </svg>
+          </div>
+        </div>
+      )}
+
+      {!isUploading && profilePicUrl && (
+        <img
+          src={profilePicUrl}
+          alt="Profile"
+          className="w-full h-full rounded-full object-cover"
+        />
+      )}
+
+      {!isUploading && !profilePicUrl && (
+        <div className="w-full h-full rounded-full bg-[#111111] flex items-center justify-center text-white text-xl font-black">
+          {(businessName || "JS").substring(0, 2).toUpperCase()}
+        </div>
+      )}
+
+      {!isUploading && (
+        <div className="absolute inset-0 rounded-full bg-black/0 group-hover:bg-black/40 flex items-center justify-center transition-all duration-200">
+          <Camera
+            size={18}
+            className="text-white opacity-0 group-hover:opacity-100 transition-opacity duration-200"
+          />
+        </div>
+      )}
+    </button>
+    <style jsx>{`
+      @keyframes skeletonPulse {
+        0%   { background-position: 200% 0; }
+        100% { background-position: -200% 0; }
+      }
+      @keyframes spin {
+        from { transform: rotate(0deg); }
+        to   { transform: rotate(360deg); }
+      }
+    `}</style>
+  </>
+);
+
 export default function ProfileSettings() {
   const router = useRouter();
 
@@ -212,98 +299,7 @@ export default function ProfileSettings() {
     router.replace('/login');
   };
 
-  // Reusable card wrapper
-  const SectionCard = ({ icon: Icon, title, children }) => (
-    <div className="bg-white border border-[#EBEBEB] rounded-lg mb-8 overflow-hidden">
-      <div className="px-4 py-3 border-b border-[#EBEBEB] bg-[#FAFAFA] flex items-center gap-2">
-        <Icon size={16} className="text-[#111111]" />
-        <h2 className="text-xs font-extrabold uppercase tracking-wider text-[#111111]">{t(title)}</h2>
-      </div>
-      <div className="p-4 flex flex-col gap-4">
-        {children}
-      </div>
-    </div>
-  );
 
-  // ── Avatar component with upload support ──
-  const AvatarUpload = () => (
-    <>
-      {/* Hidden file input */}
-      <input
-        ref={fileInputRef}
-        type="file"
-        accept="image/jpeg,image/png,image/webp,image/gif"
-        className="hidden"
-        onChange={handleFileChange}
-        id="avatar-file-input"
-      />
-      <button
-        type="button"
-        onClick={handleAvatarClick}
-        disabled={isUploading}
-        className="relative w-16 h-16 rounded-full shrink-0 group focus:outline-none focus:ring-2 focus:ring-[#111111] focus:ring-offset-2 transition-all"
-        aria-label="Upload profile picture"
-        id="avatar-upload-btn"
-      >
-        {/* Uploading: Skeleton pulse */}
-        {isUploading && (
-          <div className="absolute inset-0 rounded-full overflow-hidden">
-            <div
-              className="w-full h-full rounded-full bg-gradient-to-r from-[#E0E0E0] via-[#F5F5F5] to-[#E0E0E0]"
-              style={{
-                backgroundSize: '200% 100%',
-                animation: 'skeletonPulse 1.4s ease-in-out infinite',
-              }}
-            />
-            {/* Spinner overlay */}
-            <div className="absolute inset-0 flex items-center justify-center">
-              <svg className="w-6 h-6 text-[#888888]" style={{ animation: 'spin 1s linear infinite' }} viewBox="0 0 24 24" fill="none">
-                <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeDasharray="50 100" />
-              </svg>
-            </div>
-          </div>
-        )}
-
-        {/* Has image: show Cloudinary avatar */}
-        {!isUploading && profilePicUrl && (
-          <img
-            src={profilePicUrl}
-            alt="Profile"
-            className="w-full h-full rounded-full object-cover"
-          />
-        )}
-
-        {/* No image, not uploading: initials fallback */}
-        {!isUploading && !profilePicUrl && (
-          <div className="w-full h-full rounded-full bg-[#111111] flex items-center justify-center text-white text-xl font-black">
-            {businessName.substring(0, 2).toUpperCase()}
-          </div>
-        )}
-
-        {/* Camera overlay on hover (hidden while uploading) */}
-        {!isUploading && (
-          <div className="absolute inset-0 rounded-full bg-black/0 group-hover:bg-black/40 flex items-center justify-center transition-all duration-200">
-            <Camera
-              size={18}
-              className="text-white opacity-0 group-hover:opacity-100 transition-opacity duration-200"
-            />
-          </div>
-        )}
-      </button>
-
-      {/* Keyframe animations */}
-      <style jsx>{`
-        @keyframes skeletonPulse {
-          0%   { background-position: 200% 0; }
-          100% { background-position: -200% 0; }
-        }
-        @keyframes spin {
-          from { transform: rotate(0deg); }
-          to   { transform: rotate(360deg); }
-        }
-      `}</style>
-    </>
-  );
 
   return (
     <div
@@ -331,7 +327,14 @@ export default function ProfileSettings() {
         {/* ── 1. Business Profile ── */}
         <SectionCard icon={Building2} title="Business Profile">
           <div className="flex items-center gap-4 mb-4">
-            <AvatarUpload />
+            <AvatarUpload
+              fileInputRef={fileInputRef}
+              handleFileChange={handleFileChange}
+              handleAvatarClick={handleAvatarClick}
+              isUploading={isUploading}
+              profilePicUrl={profilePicUrl}
+              businessName={businessName}
+            />
             <div className="flex-1">
               <input type="text" value={businessName} onChange={(e) => setBusinessName(e.target.value)} className="text-lg font-bold bg-transparent border-b border-transparent hover:border-[#EBEBEB] focus:border-[#111111] focus:outline-none transition-colors px-1 -ml-1 w-full max-w-xs" />
               <input type="text" value={role} onChange={(e) => setRole(e.target.value)} className="text-[#666666] block text-xs font-bold uppercase tracking-wider mt-0.5 bg-transparent border-b border-transparent hover:border-[#EBEBEB] focus:border-[#111111] focus:outline-none transition-colors px-1 -ml-1 w-full max-w-xs" />

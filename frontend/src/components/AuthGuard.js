@@ -11,7 +11,8 @@ export default function AuthGuard({ children }) {
         if (!userStr) {
             router.push('/login');
         } else {
-            setIsAuthed(true);
+            const t = setTimeout(() => setIsAuthed(true), 0);
+            return () => clearTimeout(t);
         }
     }, [router]);
     

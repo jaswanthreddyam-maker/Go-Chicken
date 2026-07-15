@@ -1,0 +1,1017 @@
+{
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "whatsapp",
+        "options": {}
+      },
+      "id": "37655544-4c09-4b5b-8cd7-e8f03be523e6",
+      "name": "WhatsApp Incoming Message",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        2976,
+        288
+      ],
+      "webhookId": "whatsapp"
+    },
+    {
+      "parameters": {
+        "path": "whatsapp",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "6875fc48-835a-4477-b916-966f08fff2b7",
+      "name": "Meta Verification",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        2976,
+        96
+      ],
+      "webhookId": "whatsapp-verify"
+    },
+    {
+      "parameters": {
+        "respondWith": "text",
+        "responseBody": "={{ $json.query['hub.challenge'] }}",
+        "options": {}
+      },
+      "id": "3aa8c643-53e5-4247-88db-a71bd222f71b",
+      "name": "Return Challenge",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        3200,
+        96
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "phone",
+              "name": "phone",
+              "value": "={{ $json.body.phone || $json.body.entry?.[0]?.changes?.[0]?.value?.messages?.[0]?.from || '919908128167' }}",
+              "type": "string"
+            },
+            {
+              "id": "customerName",
+              "name": "customerName",
+              "value": "={{ $json.body.entry?.[0]?.changes?.[0]?.value?.contacts?.[0]?.profile?.name || 'Customer' }}",
+              "type": "string"
+            },
+            {
+              "id": "messageText",
+              "name": "messageText",
+              "value": "={{ $json.body.message || $json.body.entry?.[0]?.changes?.[0]?.value?.messages?.[0]?.text?.body || '50kg live bird' }}",
+              "type": "string"
+            },
+            {
+              "id": "messageId",
+              "name": "messageId",
+              "value": "={{ $json.body.entry?.[0]?.changes?.[0]?.value?.messages?.[0]?.id || 'msg_sim_' + Date.now() }}",
+              "type": "string"
+            },
+            {
+              "id": "timestamp",
+              "name": "timestamp",
+              "value": "={{ $json.body.entry?.[0]?.changes?.[0]?.value?.messages?.[0]?.timestamp || '' + Math.floor(Date.now()/1000) }}",
+              "type": "string"
+            },
+            {
+              "id": "baseUrl",
+              "name": "baseUrl",
+              "value": "http://127.0.0.1:8000",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "56e5a03a-8f39-47cf-8dd8-0b44b0e48046",
+      "name": "Extract Message Data",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        3200,
+        288
+      ]
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "={{ $('Extract Message Data').item.json.messageText }}",
+        "hasOutputParser": true,
+        "options": {
+          "systemMessage": "You are the AI assistant for Go Chicken, a wholesale poultry supplier.\n\nYour job is ONLY to understand the customer's request.\n\nNEVER invent prices.\nNEVER invent stock.\nNEVER promise availability.\n\nExtract:\n- intent (ORDER, PRICE_INQUIRY, ORDER_STATUS, GREETING, UNKNOWN)\n- product (if mentioned)\n- quantity (if mentioned)\n- unit (kg, pieces, etc.)\n- delivery_date (if mentioned, format YYYY-MM-DD)\n\nReturn STRICT JSON only."
+        }
+      },
+      "id": "e90cde18-c1bf-4bd0-9ab5-ea5ac7cdb38e",
+      "name": "AI Intent Extractor",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [
+        3424,
+        288
+      ]
+    },
+    {
+      "parameters": {
+        "modelName": "models/gemini-2.0-flash",
+        "options": {
+          "temperature": 0.2
+        }
+      },
+      "id": "f83da711-0cac-46ec-adc7-a369af170179",
+      "name": "Gemini Model",
+      "type": "@n8n/n8n-nodes-langchain.lmChatGoogleGemini",
+      "typeVersion": 1.1,
+      "position": [
+        3440,
+        512
+      ],
+      "credentials": {
+        "googlePalmApi": {
+          "id": "YAh09EE3afSpTEVh",
+          "name": "Google Gemini(PaLM) Api account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsonSchemaExample": {
+          "intent": "ORDER",
+          "product": "chicken",
+          "quantity": 50,
+          "unit": "kg",
+          "delivery_date": "2024-01-15"
+        }
+      },
+      "id": "5662fdb4-ae48-4d50-8866-61cc73879e40",
+      "name": "Structured Output Parser",
+      "type": "@n8n/n8n-nodes-langchain.outputParserStructured",
+      "typeVersion": 1.3,
+      "position": [
+        3568,
+        512
+      ]
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "combinator": "and",
+                "options": {
+                  "caseSensitive": false,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 1
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.output.intent }}",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "rightValue": "GREETING"
+                  }
+                ]
+              },
+              "renameOutput": true,
+              "outputKey": "greeting"
+            },
+            {
+              "conditions": {
+                "combinator": "and",
+                "options": {
+                  "caseSensitive": false,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 1
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.output.intent }}",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "rightValue": "PRICE_INQUIRY"
+                  }
+                ]
+              },
+              "renameOutput": true,
+              "outputKey": "price_inquiry"
+            },
+            {
+              "conditions": {
+                "combinator": "and",
+                "options": {
+                  "caseSensitive": false,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 1
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.output.intent }}",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "rightValue": "ORDER"
+                  }
+                ]
+              },
+              "renameOutput": true,
+              "outputKey": "order"
+            },
+            {
+              "conditions": {
+                "combinator": "and",
+                "options": {
+                  "caseSensitive": false,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 1
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.output.intent }}",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "rightValue": "ORDER_STATUS"
+                  }
+                ]
+              },
+              "renameOutput": true,
+              "outputKey": "order_status"
+            }
+          ]
+        },
+        "options": {
+          "fallbackOutput": "extra",
+          "renameFallbackOutput": "unknown"
+        }
+      },
+      "id": "316e14f3-8902-4f07-899d-7bba9d057f0b",
+      "name": "Route by Intent",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.4,
+      "position": [
+        3776,
+        240
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "send",
+        "phoneNumberId": "=1245784945278928",
+        "recipientPhoneNumber": "={{ $('Extract Message Data').item.json.phone }}",
+        "textBody": "Welcome to Go Chicken! 🐔\n\nHow can I help you today?\n\n📦 Place an order\n💰 Check prices\n📋 Track order status\n\nJust tell me what you need!",
+        "additionalFields": {}
+      },
+      "id": "dc61a9a4-73be-4c35-83b4-80ee9f27de30",
+      "name": "Send Welcome Menu",
+      "type": "n8n-nodes-base.whatsApp",
+      "typeVersion": 1.1,
+      "position": [
+        4000,
+        -96
+      ],
+      "webhookId": "f4ca8dd5-a33c-40f0-b4ff-9e62a5d51abe",
+      "credentials": {
+        "whatsAppApi": {
+          "id": "P92zQNxZPi28huQz",
+          "name": "WhatsApp account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "url": "={{ $('Extract Message Data').item.json.baseUrl }}/api/v1/pricing/resolve",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "product",
+              "value": "={{ $('AI Intent Extractor').item.json.output.product }}"
+            },
+            {
+              "name": "quantity",
+              "value": "={{ $('AI Intent Extractor').item.json.output.quantity }}"
+            }
+          ]
+        },
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          }
+        }
+      },
+      "id": "23440a59-e4d2-4a66-865e-057c21190fb1",
+      "name": "Get Pricing from API",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        4000,
+        96
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "Q24UHjMPH95ktfVV",
+          "name": "Header Auth account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "send",
+        "phoneNumberId": "=1245784945278928",
+        "recipientPhoneNumber": "={{ $('Extract Message Data').item.json.phone }}",
+        "textBody": "=💰 Current Pricing\n\nProduct: {{ $(\"AI Intent Extractor\").item.json.output.product }}\nRate: {{ $json.currency }} {{ $json.unit_price }}/{{ $(\"AI Intent Extractor\").item.json.output.unit }}\n\nWould you like to place an order?",
+        "additionalFields": {}
+      },
+      "id": "028250f9-f055-4eeb-afc4-aa735e86b1d7",
+      "name": "Send Pricing Info",
+      "type": "n8n-nodes-base.whatsApp",
+      "typeVersion": 1.1,
+      "position": [
+        4224,
+        96
+      ],
+      "webhookId": "4dfd59e7-8ffe-499f-ace9-e6f67f8c4b58",
+      "credentials": {
+        "whatsAppApi": {
+          "id": "P92zQNxZPi28huQz",
+          "name": "WhatsApp account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Extract Message Data').item.json.baseUrl }}/api/v1/quotes/preview",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { \"customer_phone\": $(\"Extract Message Data\").item.json.phone, \"product\": $(\"AI Intent Extractor\").item.json.output.product, \"quantity\": $(\"AI Intent Extractor\").item.json.output.quantity, \"delivery_date\": $(\"AI Intent Extractor\").item.json.output.delivery_date } }}",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          }
+        }
+      },
+      "id": "f98cf271-b6bd-490f-bd7b-6a3c8bb9208d",
+      "name": "Generate Quote from API",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        4000,
+        480
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "Q24UHjMPH95ktfVV",
+          "name": "Header Auth account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "send",
+        "phoneNumberId": "=1245784945278928",
+        "recipientPhoneNumber": "={{ $('Extract Message Data').item.json.phone }}",
+        "textBody": "=📋 Your Quotation\n\nProduct: {{ $json.product }}\nQuantity: {{ $json.quantity }} {{ $json.unit }}\nRate: {{ $json.currency || '₹' }} {{ $json.unit_price }}/{{ $json.unit }}\nSubtotal: {{ $json.currency || '₹' }} {{ $json.subtotal }}\nZone Charge: {{ $json.currency || '₹' }} {{ $json.zone_charge }}\n━━━━━━━━━━━━━━━\nTotal: {{ $json.currency || '₹' }} {{ $json.grand_total }}\n\nDelivery: {{ $json.delivery_date }}\n\nReply YES to confirm or NO to cancel.",
+        "additionalFields": {}
+      },
+      "id": "c1324e67-fa5d-4be7-af94-b07f9810bb9b",
+      "name": "Send Quote to Customer",
+      "type": "n8n-nodes-base.whatsApp",
+      "typeVersion": 1.1,
+      "position": [
+        4224,
+        480
+      ],
+      "webhookId": "7b4bbbf3-b7c9-40c2-8e1c-b1f99317894e",
+      "credentials": {
+        "whatsAppApi": {
+          "id": "P92zQNxZPi28huQz",
+          "name": "WhatsApp account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "resume": "webhook",
+        "httpMethod": "POST",
+        "limitWaitTime": true,
+        "resumeAmount": 24,
+        "options": {}
+      },
+      "id": "77a886a1-e4e1-476e-9d95-c248b0d37c53",
+      "name": "Wait for Customer Reply",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        4448,
+        480
+      ],
+      "webhookId": "5898ba6f-c881-4a4f-9edd-9ff5cc79258d"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "combinator": "or",
+          "options": {
+            "caseSensitive": false,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 1
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.body.message }}",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              },
+              "rightValue": "YES"
+            },
+            {
+              "leftValue": "={{ $json.body.message }}",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              },
+              "rightValue": "yes"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "c5a85aff-9f66-4d32-8ff3-b9758bd5e3bd",
+      "name": "Check Customer Response",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        4672,
+        480
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Extract Message Data').item.json.baseUrl }}/api/v1/quotes/{{ $(\"Generate Quote from API\").item.json.quote_id }}/approve",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          }
+        }
+      },
+      "id": "5557e8d1-651c-4eac-9b2e-7e7b2ba22658",
+      "name": "Approve Quote",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        4896,
+        384
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "Q24UHjMPH95ktfVV",
+          "name": "Header Auth account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Extract Message Data').item.json.baseUrl }}/api/v1/quotes/{{ $(\"Generate Quote from API\").item.json.quote_id }}/convert",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          }
+        }
+      },
+      "id": "4f7583eb-b47b-4f1c-a256-7331d46e8e8c",
+      "name": "Convert Quote to Order",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        5120,
+        384
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "Q24UHjMPH95ktfVV",
+          "name": "Header Auth account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "send",
+        "phoneNumberId": "=1245784945278928",
+        "recipientPhoneNumber": "={{ $('Extract Message Data').item.json.phone }}",
+        "textBody": "=✅ Your order has been confirmed!\n\nOrder Number: {{ $json.order_number }}\nEstimated Delivery: {{ $json.estimated_delivery }}\n\nThank you for choosing Go Chicken! 🐔",
+        "additionalFields": {}
+      },
+      "id": "8a653d7c-a85e-4d11-98bb-13cc6d5df83c",
+      "name": "Send Order Confirmation",
+      "type": "n8n-nodes-base.whatsApp",
+      "typeVersion": 1.1,
+      "position": [
+        5344,
+        384
+      ],
+      "webhookId": "64f63a79-b71b-4442-a0e5-68622e604eb6",
+      "credentials": {
+        "whatsAppApi": {
+          "id": "P92zQNxZPi28huQz",
+          "name": "WhatsApp account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "send",
+        "phoneNumberId": "=1245784945278928",
+        "recipientPhoneNumber": "={{ $('Extract Message Data').item.json.phone }}",
+        "textBody": "❌ Quotation cancelled.\n\nNo problem! Feel free to reach out when you're ready to order.\n\nThank you! 🐔",
+        "additionalFields": {}
+      },
+      "id": "c1b0a226-5ad0-43f4-a574-a5eb1cda7711",
+      "name": "Send Cancellation Message",
+      "type": "n8n-nodes-base.whatsApp",
+      "typeVersion": 1.1,
+      "position": [
+        4896,
+        576
+      ],
+      "webhookId": "bb977ba4-f778-4128-b5e8-5d462eae9f4c",
+      "credentials": {
+        "whatsAppApi": {
+          "id": "P92zQNxZPi28huQz",
+          "name": "WhatsApp account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "url": "={{ $('Extract Message Data').item.json.baseUrl }}/api/v1/orders/status",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "phone",
+              "value": "={{ $('Extract Message Data').item.json.phone }}"
+            }
+          ]
+        },
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          }
+        }
+      },
+      "id": "14ed4119-2b12-421a-a092-3eabd9afe279",
+      "name": "Get Order Status from API",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        4000,
+        288
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "Q24UHjMPH95ktfVV",
+          "name": "Header Auth account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "send",
+        "phoneNumberId": "=1245784945278928",
+        "recipientPhoneNumber": "={{ $('Extract Message Data').item.json.phone }}",
+        "textBody": "=📋 Order Status\n\nOrder #: {{ $json.order_number }}\nStatus: {{ $json.status }}\nEstimated Delivery: {{ $json.estimated_delivery }}\n\nThank you for choosing Go Chicken!",
+        "additionalFields": {}
+      },
+      "id": "62e3f4df-e53e-4b77-8108-6a0acdbcee09",
+      "name": "Send Order Status",
+      "type": "n8n-nodes-base.whatsApp",
+      "typeVersion": 1.1,
+      "position": [
+        4224,
+        288
+      ],
+      "webhookId": "9d803a1a-12d1-44da-ba04-0ef56875bd1b",
+      "credentials": {
+        "whatsAppApi": {
+          "id": "P92zQNxZPi28huQz",
+          "name": "WhatsApp account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "send",
+        "phoneNumberId": "=1245784945278928",
+        "recipientPhoneNumber": "={{ $('Extract Message Data').item.json.phone }}",
+        "textBody": "I'm sorry, I didn't quite understand that. 🤔\n\nCould you please rephrase? You can:\n\n📦 Place an order\n💰 Ask for prices\n📋 Check order status",
+        "additionalFields": {}
+      },
+      "id": "5f8b19fc-3bb3-4cca-bd8c-e5b946ff6c83",
+      "name": "Ask for Clarification",
+      "type": "n8n-nodes-base.whatsApp",
+      "typeVersion": 1.1,
+      "position": [
+        4000,
+        672
+      ],
+      "webhookId": "6a68cd02-4de9-4882-a0e1-bd6537e9d742",
+      "credentials": {
+        "whatsAppApi": {
+          "id": "P92zQNxZPi28huQz",
+          "name": "WhatsApp account"
+        }
+      }
+    },
+    {
+      "parameters": {},
+      "id": "080cc74f-f9e6-4f40-b618-5ccd3b78b9fb",
+      "name": "On Workflow Error",
+      "type": "n8n-nodes-base.errorTrigger",
+      "typeVersion": 1,
+      "position": [
+        2976,
+        896
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "send",
+        "phoneNumberId": "=1245784945278928",
+        "recipientPhoneNumber": "={{ $('Extract Message Data').item.json.phone }}",
+        "textBody": "⚠️ Sorry, something went wrong while processing your request.\n\nPlease try again in a few moments.\n\nIf the issue persists, please contact our support team.",
+        "additionalFields": {}
+      },
+      "id": "fe7f47c0-b075-4869-9747-cf4e4a346c04",
+      "name": "Send Error Message",
+      "type": "n8n-nodes-base.whatsApp",
+      "typeVersion": 1.1,
+      "position": [
+        3200,
+        896
+      ],
+      "webhookId": "1a4e521e-9fa6-4937-b7fa-4f54dd6d9c81",
+      "credentials": {
+        "whatsAppApi": {
+          "id": "P92zQNxZPi28huQz",
+          "name": "WhatsApp account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "content": "## 📥 Input Layer\nReceive WhatsApp messages and extract customer data",
+        "height": 200,
+        "width": 600,
+        "color": 2
+      },
+      "id": "7209bbbc-6e15-4bde-8092-255648af0413",
+      "name": "Sticky Note 8426a91e",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        2928,
+        48
+      ]
+    },
+    {
+      "parameters": {
+        "content": "## 🤖 AI Understanding\nExtract intent and order details using Gemini",
+        "height": 200,
+        "width": 300,
+        "color": 3
+      },
+      "id": "f5241192-844a-4df1-98c6-d5dfdcb2d88c",
+      "name": "Sticky Note 877fa9d1",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        3536,
+        48
+      ]
+    },
+    {
+      "parameters": {
+        "content": "## 🔀 Intent Routing\nRoute to appropriate business flow",
+        "height": 200,
+        "width": 300,
+        "color": 4
+      },
+      "id": "6769eb27-4357-4133-847f-122aebc61f2c",
+      "name": "Sticky Note 5182f797",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        3904,
+        64
+      ]
+    },
+    {
+      "parameters": {
+        "content": "## 💼 Business API Calls\nAll pricing, inventory, and order logic handled by FastAPI",
+        "height": 300,
+        "width": 1800,
+        "color": 5
+      },
+      "id": "05e466f2-52e6-4944-833b-166934107c7e",
+      "name": "Sticky Note 33099828",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        3376,
+        -48
+      ]
+    },
+    {
+      "parameters": {
+        "content": "## 📤 Customer Response\nSend confirmations and updates via WhatsApp",
+        "height": 400,
+        "width": 900,
+        "color": 6
+      },
+      "id": "5437ed7b-8464-4d4b-a7e1-ae1007480db1",
+      "name": "Sticky Note 10f9db17",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        5328,
+        48
+      ]
+    },
+    {
+      "parameters": {
+        "content": "## ⚠️ Error Handling\nGraceful error recovery",
+        "height": 200,
+        "width": 600,
+        "color": 7
+      },
+      "id": "863e5e88-3872-463b-bfde-0923e86945e3",
+      "name": "Sticky Note d49736d4",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        3168,
+        464
+      ]
+    }
+  ],
+  "connections": {
+    "WhatsApp Incoming Message": {
+      "main": [
+        [
+          {
+            "node": "Extract Message Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Meta Verification": {
+      "main": [
+        [
+          {
+            "node": "Return Challenge",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract Message Data": {
+      "main": [
+        [
+          {
+            "node": "AI Intent Extractor",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Intent Extractor": {
+      "main": [
+        [
+          {
+            "node": "Route by Intent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gemini Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI Intent Extractor",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Structured Output Parser": {
+      "ai_outputParser": [
+        [
+          {
+            "node": "AI Intent Extractor",
+            "type": "ai_outputParser",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Route by Intent": {
+      "main": [
+        [
+          {
+            "node": "Send Welcome Menu",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Get Pricing from API",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Generate Quote from API",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Get Order Status from API",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Ask for Clarification",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Pricing from API": {
+      "main": [
+        [
+          {
+            "node": "Send Pricing Info",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Generate Quote from API": {
+      "main": [
+        [
+          {
+            "node": "Send Quote to Customer",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send Quote to Customer": {
+      "main": [
+        [
+          {
+            "node": "Wait for Customer Reply",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait for Customer Reply": {
+      "main": [
+        [
+          {
+            "node": "Check Customer Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Customer Response": {
+      "main": [
+        [
+          {
+            "node": "Approve Quote",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Send Cancellation Message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Approve Quote": {
+      "main": [
+        [
+          {
+            "node": "Convert Quote to Order",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Convert Quote to Order": {
+      "main": [
+        [
+          {
+            "node": "Send Order Confirmation",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Order Status from API": {
+      "main": [
+        [
+          {
+            "node": "Send Order Status",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "On Workflow Error": {
+      "main": [
+        [
+          {
+            "node": "Send Error Message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "meta": {
+    "instanceId": "d05b48dee2d6d1afa5402d07a7ec957835ca42b8818c55b43b92b159933bfded"
+  }
+}

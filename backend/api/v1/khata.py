@@ -23,11 +23,14 @@ class RetailerResponse(BaseModel):
     id: uuid.UUID
     name: str
     phone: str
+    shopName: str
+    balance: Decimal
+    lastPaid: str
 
 @router.get(
     "/retailers",
     response_model=List[RetailerResponse],
-    summary="Get all retailers for the current tenant"
+    summary="Get all retailers with running Khata balances for the current tenant"
 )
 async def get_retailers(
     tenant_id: uuid.UUID = Depends(get_current_tenant),
@@ -37,7 +40,41 @@ async def get_retailers(
     result = await db.execute(
         select(User).where(User.tenant_id == tenant_id, User.role == UserRole.RETAILER)
     )
-    return result.scalars().all()
+    users = result.scalars().all()
+    
+    retailers_out = []
+    for u in users:
+        # Get latest transaction for running balance
+        txn_res = await db.execute(
+            select(KhataTransaction)
+            .where(KhataTransaction.retailer_id == u.id)
+            .order_by(desc(KhataTransaction.created_at))
+            .limit(1)
+        )
+        latest_txn = txn_res.scalar_one_or_none()
+        balance = latest_txn.balance_after if latest_txn else Decimal("0.00")
+        
+        # Get latest payment for lastPaid date
+        pay_res = await db.execute(
+            select(KhataTransaction)
+            .where(KhataTransaction.retailer_id == u.id, KhataTransaction.type == TransactionType.PAYMENT)
+            .order_by(desc(KhataTransaction.created_at))
+            .limit(1)
+        )
+        latest_pay = pay_res.scalar_one_or_none()
+        last_paid_str = latest_pay.created_at.strftime("%Y-%m-%d") if latest_pay and latest_pay.created_at else "—"
+        
+        retailers_out.append(
+            RetailerResponse(
+                id=u.id,
+                name=u.name,
+                phone=u.phone,
+                shopName=u.shop_address or u.name,
+                balance=balance,
+                lastPaid=last_paid_str,
+            )
+        )
+    return retailers_out
 
 @router.get(
     "/{retailer_id}/balance",

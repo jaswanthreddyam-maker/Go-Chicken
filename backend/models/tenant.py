@@ -21,7 +21,7 @@ class Tenant(Base):
     # Relationships
     users = relationship("User", back_populates="tenant", cascade="all, delete-orphan")
     trucks = relationship("Truck", back_populates="tenant", cascade="all, delete-orphan")
-    inventory = relationship("Inventory", back_populates="tenant", cascade="all, delete-orphan")
+    inventory_items = relationship("InventoryItem", back_populates="tenant", cascade="all, delete-orphan")
     orders = relationship("Order", back_populates="tenant", cascade="all, delete-orphan")
     khata_transactions = relationship("KhataTransaction", back_populates="tenant", cascade="all, delete-orphan")
     ai_forecasts = relationship("AIForecast", back_populates="tenant", cascade="all, delete-orphan")

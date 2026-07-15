@@ -39,6 +39,9 @@ class User(Base):
     latitude: Mapped[Decimal | None] = mapped_column(Numeric(10, 8))
     longitude: Mapped[Decimal | None] = mapped_column(Numeric(11, 8))
 
+    # Preferences
+    preferred_language: Mapped[str | None] = mapped_column(String(10), default=None)
+
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
     )

@@ -9,6 +9,8 @@ class Settings(BaseSettings):
     APP_NAME: str = "Go Chicken API"
     APP_VERSION: str = "0.1.0"
     DEBUG: bool = False
+    ENVIRONMENT: str = "development"
+    DEMO_MODE: bool = True
     JWT_SECRET: str = ""  # REQUIRED — set in .env
 
     # PostgreSQL (asyncpg)
@@ -19,6 +21,8 @@ class Settings(BaseSettings):
     IOT_API_KEY: str = "default_iot_key_please_change"
 
     # Ollama AI
+    AI_PROVIDER: str = "ollama"  # "ollama" or "groq"
+    GROQ_API_KEY: str = ""
     OLLAMA_BASE_URL: str = "http://localhost:11434"
     OLLAMA_EMBED_MODEL: str = "nomic-embed-text"
     OLLAMA_CHAT_MODEL: str = "mistral"  # or any local 7B model

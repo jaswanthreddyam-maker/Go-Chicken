@@ -24,4 +24,4 @@ class ErrorLog(Base):
     error_message = Column(Text, nullable=False)         # Full error message
     stack_trace = Column(Text, nullable=True)            # Full traceback
     payload = Column(JSONB, nullable=True)               # Raw payload that caused it
-    created_at = Column(DateTime, server_default=func.now())
+    created_at = Column(DateTime(timezone=True), server_default=func.now())

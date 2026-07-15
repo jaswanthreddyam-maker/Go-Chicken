@@ -51,6 +51,41 @@ async def get_prices(
     return response
 
 
+@router.api_route("/resolve", methods=["GET", "POST"])
+async def resolve_pricing(
+    product: str = "Live Bird",
+    quantity: float = 1.0,
+    db: AsyncSession = Depends(get_db)
+):
+    """Resolve current price for a product and compute wholesale total for WhatsApp/n8n."""
+    prices_map = await get_all_prices(db)
+    
+    # Normalize product name mapping
+    prod_lower = str(product).lower()
+    item_type = "Live Bird"
+    if "dress" in prod_lower:
+        item_type = "Dressed"
+    elif "skinless" in prod_lower:
+        item_type = "Skinless"
+    elif "live" in prod_lower or "bird" in prod_lower or "chicken" in prod_lower:
+        item_type = "Live Bird"
+    elif product in prices_map:
+        item_type = product
+
+    unit_price = float(prices_map.get(item_type, 180.0))
+    qty = float(quantity) if quantity and float(quantity) > 0 else 1.0
+    total = round(unit_price * qty, 2)
+
+    return {
+        "product": item_type,
+        "quantity": qty,
+        "unit": "kg",
+        "unit_price": unit_price,
+        "currency": "₹",
+        "total": total
+    }
+
+
 @router.put("/{item_type}", response_model=PriceResponse)
 async def set_price(
     item_type: str, 

@@ -1,33 +1,137 @@
 @import "tailwindcss";
 
+/* ══════════════════════════════════════════════════════════
+   GO CHICKEN DESIGN SYSTEM — Global Design Tokens
+   Source of truth: DESIGN_SYSTEM.md (FROZEN)
+   ══════════════════════════════════════════════════════════ */
+
 :root {
-  --background: #FAFAFA;
-  --foreground: #111111;
+  /* ── Backgrounds ──────────────────────────────────────── */
+  --bg-app: #FAFAFA;
+  --bg-surface: #FFFFFF;
+  --bg-elevated: #F0F0F0;
+
+  /* ── Borders ──────────────────────────────────────────── */
+  --border-subtle: #EBEBEB;
+  --border-default: #D4D4D4;
+  --border-strong: #111111;
+
+  /* ── Text ──────────────────────────────────────────────── */
+  --text-primary: #111111;
+  --text-secondary: #666666;
+  --text-tertiary: #999999;
+
+  /* ── Status: Success ──────────────────────────────────── */
+  --success-bg: #ECFDF5;
+  --success-text: #047857;
+  --success-border: #A7F3D0;
+
+  /* ── Status: Warning ──────────────────────────────────── */
+  --warning-bg: #FFFBEB;
+  --warning-text: #B45309;
+  --warning-border: #FDE68A;
+
+  /* ── Status: Danger ───────────────────────────────────── */
+  --danger-bg: #FEF2F2;
+  --danger-text: #B91C1C;
+  --danger-border: #FECACA;
+
+  /* ── Status: Info ─────────────────────────────────────── */
+  --info-bg: #EFF6FF;
+  --info-text: #1D4ED8;
+  --info-border: #BFDBFE;
+
+  /* ── Border Radius ────────────────────────────────────── */
+  --radius-sm: 4px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius-full: 9999px;
+
+  /* ── Elevation / Shadows ──────────────────────────────── */
+  --shadow-xs: 0 1px 2px rgba(0,0,0,0.05);
+  --shadow-sm: 0 1px 3px rgba(0,0,0,0.1), 0 1px 2px rgba(0,0,0,0.06);
+  --shadow-md: 0 4px 6px -1px rgba(0,0,0,0.1), 0 2px 4px -1px rgba(0,0,0,0.06);
+  --shadow-lg: 0 10px 15px -3px rgba(0,0,0,0.1), 0 4px 6px -2px rgba(0,0,0,0.05);
+
+  /* ── Z-Index Scale ────────────────────────────────────── */
+  --z-base: 0;
+  --z-sticky: 50;
+  --z-dropdown: 100;
+  --z-popover: 200;
+  --z-drawer: 300;
+  --z-modal: 400;
+  --z-toast: 500;
+
+  /* ── Motion ───────────────────────────────────────────── */
+  --duration-fast: 150ms;
+  --duration-normal: 300ms;
+  --ease-standard: cubic-bezier(0.4, 0, 0.2, 1);
+
+  /* ── Legacy compat ────────────────────────────────────── */
+  --background: var(--bg-app);
+  --foreground: var(--text-primary);
 }
 
+/* Dark Mode Override Support */
+[data-theme='dark'], .dark {
+  --bg-app: #111111;
+  --bg-surface: #1E1E1E;
+  --bg-elevated: #2D2D2D;
+  --border-subtle: #2A2A2A;
+  --border-default: #444444;
+  --border-strong: #FFFFFF;
+  --text-primary: #FAFAFA;
+  --text-secondary: #AAAAAA;
+  --text-tertiary: #666666;
+
+  --background: var(--bg-app);
+  --foreground: var(--text-primary);
+}
+
+/* ── Tailwind Theme Integration ─────────────────────────── */
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-inter), var(--font-geist-sans), system-ui, sans-serif;
+  --font-sans: var(--font-inter), var(--font-geist-sans), system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
   --font-mono: var(--font-geist-mono), ui-monospace, monospace;
 }
 
-/* Force light mode — B&W monochromatic doesn't use dark mode */
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #FAFAFA;
-    --foreground: #111111;
-  }
-}
+/* ══════════════════════════════════════════════════════════
+   BASE STYLES
+   ══════════════════════════════════════════════════════════ */
 
 body {
-  background: #FFFFFF;
-  color: var(--foreground);
+  background: var(--bg-surface);
+  color: var(--text-primary);
   font-family: var(--font-sans);
+  font-size: 14px;
+  line-height: 20px;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   overflow-x: hidden;
 }
+
+/* ══════════════════════════════════════════════════════════
+   TYPOGRAPHY SYSTEM
+   Strict scale. No random font sizes.
+   ══════════════════════════════════════════════════════════ */
+
+.text-display { font-size: 36px; line-height: 40px; font-weight: 900; letter-spacing: -0.02em; }
+.text-h1      { font-size: 30px; line-height: 36px; font-weight: 800; letter-spacing: -0.02em; }
+.text-h2      { font-size: 24px; line-height: 32px; font-weight: 800; letter-spacing: -0.01em; }
+.text-h3      { font-size: 20px; line-height: 28px; font-weight: 700; }
+.text-body    { font-size: 14px; line-height: 20px; font-weight: 500; }
+.text-caption { font-size: 12px; line-height: 16px; font-weight: 500; }
+.text-label   { font-size: 11px; line-height: 16px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; }
+
+/* ── Tabular numbers for data alignment ─────────────────── */
+.tabular-nums {
+  font-variant-numeric: tabular-nums;
+}
+
+/* ══════════════════════════════════════════════════════════
+   UTILITY CLASSES
+   ══════════════════════════════════════════════════════════ */
 
 /* ── Scrollbar Utilities ────────────────────────────────── */
 .scrollbar-none {
@@ -38,13 +142,10 @@ body {
   display: none;
 }
 
-/* ── Responsive Table Cell Minimum Widths ──────────────── */
-@media (max-width: 767px) {
-  table th,
-  table td {
-    white-space: nowrap;
-    min-width: 90px;
-  }
+/* ── Focus Ring (Accessibility) ─────────────────────────── */
+.focus-ring:focus-visible {
+  outline: 2px solid var(--border-strong);
+  outline-offset: 2px;
 }
 
 /* ── Smooth scroll snap for mobile stat cards ─────────── */
@@ -70,15 +171,35 @@ body {
   }
 }
 
-/* ── Animate-in utility ────────────────────────────────── */
+/* ══════════════════════════════════════════════════════════
+   ANIMATION KEYFRAMES
+   ══════════════════════════════════════════════════════════ */
+
 @keyframes fadeIn {
   from { opacity: 0; transform: translateY(4px); }
   to { opacity: 1; transform: translateY(0); }
 }
+
 @keyframes slideInFromBottom {
   from { transform: translateY(100%); }
   to { transform: translateY(0); }
 }
+
+@keyframes slideInFromTop {
+  from { opacity: 0; transform: translateY(-12px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes scaleIn {
+  from { opacity: 0; transform: scale(0.95); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+@keyframes scaleInNew {
+  from { transform: scale(0.97); }
+  to { transform: scale(1); }
+}
+
 .animate-in {
   animation-fill-mode: both;
 }
@@ -88,8 +209,17 @@ body {
 .slide-in-from-bottom {
   animation-name: slideInFromBottom;
 }
+.slide-in-from-top {
+  animation-name: slideInFromTop;
+}
+.scale-in {
+  animation-name: scaleIn;
+}
 .duration-300 {
-  animation-duration: 300ms;
+  animation-duration: var(--duration-normal);
+}
+.duration-150 {
+  animation-duration: var(--duration-fast);
 }
 
 @keyframes waveAppear {
@@ -106,7 +236,7 @@ body {
   }
 }
 .animate-wave {
-  animation: waveAppear 0.5s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+  animation: waveAppear 0.5s var(--ease-standard) forwards;
 }
 
 /* ── Landing Page: Floating hero image ─────────────────── */

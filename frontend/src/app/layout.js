@@ -1,6 +1,7 @@
 import { Geist, Geist_Mono, Inter } from "next/font/google";
 import "./globals.css";
 import { LanguageProvider } from "@/context/LanguageContext";
+import { UIProvider } from "@/context/UIContext";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -40,9 +41,11 @@ export default function RootLayout({ children }) {
         <meta name="darkreader-lock" />
       </head>
       <body className="min-h-full flex flex-col bg-white text-[#111111]">
-        <LanguageProvider>
-          {children}
-        </LanguageProvider>
+        <UIProvider>
+          <LanguageProvider>
+            {children}
+          </LanguageProvider>
+        </UIProvider>
       </body>
     </html>
   );
