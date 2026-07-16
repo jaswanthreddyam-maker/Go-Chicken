@@ -88,6 +88,24 @@ async def update_profile(
     for key, value in update_data.items():
         setattr(profile, key, value)
         
+    # Sync contact_number to User table for WhatsApp routing
+    if "contact_number" in update_data and update_data["contact_number"]:
+        from models.user import User
+        user_result = await db.execute(select(User).where(User.tenant_id == tenant_id, User.role == "ADMIN"))
+        user = user_result.scalar_one_or_none()
+        if user:
+            # Strip non-numeric characters for WhatsApp format (e.g. 15551701265)
+            import re
+            clean_phone = re.sub(r'\D', '', update_data["contact_number"])
+            if clean_phone and user.phone != clean_phone:
+                # Release this phone number from any other user (e.g. seed data or previous demo)
+                other_user_res = await db.execute(select(User).where(User.phone == clean_phone))
+                other_user = other_user_res.scalar_one_or_none()
+                if other_user and other_user.id != user.id:
+                    other_user.phone = f"old_{other_user.phone}"
+                    
+                user.phone = clean_phone
+                
     await db.commit()
     await db.refresh(profile)
     return profile
