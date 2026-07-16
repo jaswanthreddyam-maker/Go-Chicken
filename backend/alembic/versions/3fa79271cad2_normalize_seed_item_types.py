@@ -19,17 +19,16 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-    # Migrate InventoryItem
+    # Migrate InventoryItem (No unique constraint on item_type alone)
     op.execute("UPDATE inventory_items SET item_type = 'BROILER' WHERE item_type IN ('Live Bird', 'Broiler', 'LIVE_BIRD', 'LIVE BIRD');")
     op.execute("UPDATE inventory_items SET item_type = 'DESI' WHERE item_type = 'Country Chicken';")
     
-    # Migrate ProductPrice
-    op.execute("UPDATE product_prices SET item_type = 'BROILER' WHERE item_type IN ('Live Bird', 'Broiler', 'LIVE_BIRD', 'LIVE BIRD');")
-    op.execute("UPDATE product_prices SET item_type = 'DESI' WHERE item_type = 'Country Chicken';")
+    # Migrate ProductPrice (Unique constraint on item_type)
+    # Safely delete old ones to avoid unique constraint violations, let auto-seeder recreate them
+    op.execute("DELETE FROM product_prices WHERE item_type IN ('Live Bird', 'Broiler', 'LIVE_BIRD', 'LIVE BIRD', 'Country Chicken');")
 
-    # Migrate PriceBookEntry
-    op.execute("UPDATE pricing_price_book_entries SET sku = 'BROILER' WHERE sku IN ('Live Bird', 'Broiler', 'LIVE_BIRD', 'LIVE BIRD');")
-    op.execute("UPDATE pricing_price_book_entries SET sku = 'DESI' WHERE sku = 'Country Chicken';")
+    # Migrate PriceBookEntry (Unique constraint on price_book_id, sku, min_quantity_kg)
+    op.execute("DELETE FROM pricing_price_book_entries WHERE sku IN ('Live Bird', 'Broiler', 'LIVE_BIRD', 'LIVE BIRD', 'Country Chicken');")
 
 def downgrade() -> None:
     pass
