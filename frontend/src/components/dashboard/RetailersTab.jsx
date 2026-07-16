@@ -92,8 +92,10 @@ export const RetailersTab = () => {
       const res = await fetch(`${API_URL}/retailers/invite`, {
         method: 'POST',
         headers: {
-          'Authorization': `Bearer ${token}`
-        }
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({})
       });
       
       if (!res.ok) throw new Error('Failed to generate invite');

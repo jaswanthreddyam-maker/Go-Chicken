@@ -38,10 +38,11 @@ class InviteResponse(BaseModel):
 
 @router.post("/invite", response_model=InviteResponse)
 async def create_invite(
-    req: InviteRequest, 
+    req: InviteRequest = None, 
     db: AsyncSession = Depends(get_db)
 ):
     """Generate a new onboarding invite and return data + QR URL."""
+    req = req or InviteRequest()
     # For hackathon demo, assuming tenant is the first one in DB
     result = await db.execute(select(Tenant).limit(1))
     tenant = result.scalar_one_or_none()
