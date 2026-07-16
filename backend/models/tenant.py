@@ -1,6 +1,6 @@
 import uuid
 from datetime import datetime, timezone
-from sqlalchemy import String, DateTime
+from sqlalchemy import String, DateTime, Numeric
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from models.base import Base
 
@@ -14,6 +14,8 @@ class Tenant(Base):
         primary_key=True, default=uuid.uuid4
     )
     name: Mapped[str] = mapped_column(String(255), nullable=False)
+    warehouse_latitude: Mapped[float | None] = mapped_column(Numeric(10, 8))
+    warehouse_longitude: Mapped[float | None] = mapped_column(Numeric(11, 8))
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
     )

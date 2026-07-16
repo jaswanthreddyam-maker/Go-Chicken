@@ -2,7 +2,7 @@ import uuid
 import enum
 from datetime import datetime, timezone
 from decimal import Decimal
-from sqlalchemy import String, Text, Numeric, DateTime, ForeignKey, Enum
+from sqlalchemy import String, Text, Numeric, DateTime, ForeignKey, Enum, Sequence
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from models.base import Base
 
@@ -41,11 +41,20 @@ class User(Base):
 
     # Retailer routing fields
     shop_address: Mapped[str | None] = mapped_column(Text)
+    shop_name: Mapped[str | None] = mapped_column(String(255))
+    
+    # We define a Sequence here for PostgreSQL atomic IDs. 
+    # retailer_id is mapped as string, we will assign it manually in Python with f"GC-RET-{nextval:06d}"
+    retailer_id: Mapped[str | None] = mapped_column(String(50), unique=True)
+    zone: Mapped[str | None] = mapped_column(String(100))
     latitude: Mapped[Decimal | None] = mapped_column(Numeric(10, 8))
     longitude: Mapped[Decimal | None] = mapped_column(Numeric(11, 8))
 
     # Preferences
     preferred_language: Mapped[str | None] = mapped_column(String(10), default=None)
+    
+    # Status
+    onboarding_status: Mapped[str] = mapped_column(String(50), server_default="ACTIVE", default="ACTIVE")
 
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)

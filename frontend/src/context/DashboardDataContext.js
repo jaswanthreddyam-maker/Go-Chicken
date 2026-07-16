@@ -309,6 +309,27 @@ export function DashboardDataProvider({ children }) {
           }, 800);
         } else if (type === "AI_EXTRACTION") {
           setLatestAIExtraction(data);
+        } else if (type === "NEW_RETAILER_REGISTRATION") {
+          addToast(`🆕 New Retailer Registration\n${data.shop_name}`, "info");
+          fetchRetailers(true);
+        } else if (type === "RETAILER_APPROVED") {
+          addToast(`🟢 Retailer Approved\n${data.message.split('\n')[0]}`, "success");
+          fetchRetailers(true);
+          
+          setTimeout(() => {
+            setOperationsFeed(prev => [{
+              id: data.retailer_id + Date.now(),
+              time: new Date(timestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}),
+              type: 'Retailer',
+              title: 'Retailer Approved',
+              desc: `${data.shop_name || 'New Retailer'} approved`,
+              value: '',
+              icon: '🟢'
+            }, ...prev].slice(0, 50));
+          }, 800);
+        } else if (type === "RETAILER_REJECTED") {
+          addToast(`🔴 Retailer Rejected\n${data.phone}`, "error");
+          fetchRetailers(true);
         }
       } catch (err) {
         console.error("SSE parse error", err);

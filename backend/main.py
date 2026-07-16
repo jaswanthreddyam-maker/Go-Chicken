@@ -10,7 +10,20 @@ import logging
 from fastapi import FastAPI
 from core.database import engine, Base
 import models  # Import all models to ensure they are attached to Base.metadata
-from routers import orders, whatsapp, analytics, pricing, trucks, profile, auth, inventory, quotes, events, ai  # Import routers
+from routers import (
+    orders,
+    whatsapp,
+    analytics,
+    pricing,
+    quotes,
+    trucks,
+    profile,
+    auth,
+    inventory,
+    events,
+    ai,
+    retailers,
+)  # Import routers
 from api.v1 import khata as khata_v1  # Import Khata ledger router
 from sqlalchemy import text
 from fastapi.middleware.cors import CORSMiddleware
@@ -80,6 +93,7 @@ app.include_router(inventory.router)
 app.include_router(khata_v1.router, prefix="/api/v1/khata", tags=["Khata Ledger"])
 app.include_router(events.router, prefix="/api/v1")
 app.include_router(ai.router)
+app.include_router(retailers.router, prefix="/api/v1")
 
 
 # Root alias routes in case Meta webhook is configured without /api/v1 prefix

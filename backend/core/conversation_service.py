@@ -1,289 +1,465 @@
-"""Conversation State Machine Service for WhatsApp Order Assistant."""
-
 import logging
-from datetime import datetime, timezone, timedelta
-from decimal import Decimal
 import uuid
-
-from sqlalchemy import select
+import re
+from typing import Optional, List, Dict, Any, Tuple
+from datetime import datetime, timezone, timedelta
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select, update, text, Sequence
 
+from models.user import User, UserRole
 from models.conversation_state import ConversationState
-from models.user import User
-from core.whatsapp_i18n import get_message
+from models.invitation import RetailerInvitation, InviteStatus
+from models.onboarding import RetailerOnboardingDraft, DraftStatus, RetailerOnboardingEvent
+from core.ai_provider import classify_message
+from core.event_broadcaster import broadcast_event
 
-logger = logging.getLogger("go_chicken.conversation_service")
+logger = logging.getLogger(__name__)
 
-# Time after which a conversation state resets to IDLE
-SESSION_TIMEOUT_MINUTES = 30
+class WhatsAppMessage:
+    def __init__(
+        self,
+        sender_phone: str,
+        sender_name: str,
+        text: Optional[str] = None,
+        button_id: Optional[str] = None,
+        latitude: Optional[float] = None,
+        longitude: Optional[float] = None
+    ):
+        self.sender_phone = sender_phone
+        self.sender_name = sender_name
+        self.text = (text or "").strip()
+        self.button_id = button_id
+        self.latitude = latitude
+        self.longitude = longitude
+
+    @property
+    def is_location(self) -> bool:
+        return self.latitude is not None and self.longitude is not None
 
 
 class ConversationService:
-    """State machine and deterministic response generator for WhatsApp."""
-
     @staticmethod
-    async def get_or_create_state(db: AsyncSession, user: User) -> ConversationState:
-        """Fetch existing conversation state for user, or create a new one."""
-        result = await db.execute(
-            select(ConversationState).where(ConversationState.user_id == user.id)
-        )
-        state = result.scalars().first()
-
+    async def get_or_create_state(db: AsyncSession, phone_number: str) -> ConversationState:
+        result = await db.execute(select(ConversationState).where(ConversationState.phone_number == phone_number))
+        state = result.scalar_one_or_none()
         if not state:
             state = ConversationState(
-                user_id=user.id,
-                tenant_id=user.tenant_id,
-                language=user.preferred_language
+                phone_number=phone_number,
+                state="READY",
+                language=None
             )
             db.add(state)
             await db.commit()
             await db.refresh(state)
-        
-        # Sync language from user to state if user already picked it
-        if user.preferred_language and state.language != user.preferred_language:
-            state.language = user.preferred_language
-            await db.commit()
-
         return state
 
-    @staticmethod
-    async def reset_state(db: AsyncSession, state: ConversationState):
-        """Reset conversation state to IDLE and clear context."""
-        state.state = "IDLE"
-        state.pending_intent = None
-        state.pending_product = None
-        state.pending_quantity = None
-        state.pending_quote_id = None
-        state.pending_price_per_kg = None
-        state.pending_total = None
-        state.handoff_requested = False
-        state.updated_at = datetime.now(timezone.utc)
-        await db.commit()
-
-    @staticmethod
-    async def reset_if_expired(db: AsyncSession, state: ConversationState) -> bool:
-        """If session is older than timeout, reset to IDLE and return True."""
-        now = datetime.now(timezone.utc)
-        if state.updated_at < now - timedelta(minutes=SESSION_TIMEOUT_MINUTES):
-            # Only reset if we are not already IDLE
-            if state.state != "IDLE":
-                await ConversationService.reset_state(db, state)
-                return True
-        return False
-
-    @staticmethod
-    def get_main_menu_buttons() -> list[dict[str, str]]:
-        """Return the standard interactive list options for Main Menu.
-        Note: WhatsApp allows 3 buttons max for standard interactive messages.
-        For menus, we mock this as returning top 3, or expecting list messages.
-        Here we return 3 priority actions for buttons.
-        """
-        return [
-            {"id": "menu_order", "title": "📦 Place Order"},
-            {"id": "menu_prices", "title": "💰 Check Prices"},
-            {"id": "menu_khata", "title": "💳 Khata"},
-        ]
-
-    @staticmethod
-    def get_product_buttons() -> list[dict[str, str]]:
-        return [
-            {"id": "product_live", "title": "🐔 Live Bird"},
-            {"id": "product_dressed", "title": "🍗 Dressed"},
-            {"id": "product_skinless", "title": "🥩 Skinless"},
-        ]
-
-    @staticmethod
-    async def handle_language_selection(
-        db: AsyncSession, state: ConversationState, user: User, button_id: str
-    ) -> list[dict]:
-        """Handle language button click and transition to Welcome."""
-        lang_map = {"lang_en": "en", "lang_hi": "hi", "lang_te": "te"}
-        chosen_lang = lang_map.get(button_id)
+    @classmethod
+    async def process(cls, db: AsyncSession, message: WhatsAppMessage, user: Optional[User] = None) -> List[Dict[str, Any]]:
+        state = await cls.get_or_create_state(db, message.sender_phone)
         
-        if not chosen_lang:
-            # Re-prompt
-            return [{
-                "type": "interactive",
-                "text": get_message("LANGUAGE_SELECTION", "en"),
-                "buttons": [
-                    {"id": "lang_en", "title": "🇮🇳 English"},
-                    {"id": "lang_hi", "title": "🇮🇳 हिन्दी"},
-                    {"id": "lang_te", "title": "🇮🇳 తెలుగు"}
-                ]
-            }]
+        # 1. Global Interrupt Layer
+        emergency_action = await cls._handle_emergency(db, state, message)
+        if emergency_action:
+            return emergency_action
+
+        # 2. Check Timeouts
+        timeout_action = await cls._handle_timeout(db, state)
+        if timeout_action:
+            return timeout_action
+            
+        # 3. Handle JOIN_GC Deep Links
+        if message.text.startswith("JOIN_GC_"):
+            return await cls._handle_invite(db, state, message, user)
+            
+        # If no active onboarding, and user doesn't exist, we must drop them
+        # unless they are clicking JOIN_GC.
+        if not user and state.state == "READY":
+            return [{"type": "text", "text": "Welcome to Go Chicken. Please ask your wholesaler for an invitation QR code to register."}]
+            
+        if user and user.onboarding_status == "PENDING_APPROVAL" and state.state == "WAITING_APPROVAL":
+            return [{"type": "text", "text": "Your registration is currently pending wholesaler approval.\n\nWe'll notify you as soon as your account is activated."}]
+
+        # 4. Route based on state
+        handler = cls._get_state_handler(state.state)
+        return await handler(db, state, message, user)
+
+    @classmethod
+    async def _handle_emergency(cls, db: AsyncSession, state: ConversationState, message: WhatsAppMessage) -> Optional[List[Dict[str, Any]]]:
+        text_lower = message.text.lower()
+        if text_lower in ["cancel", "stop", "abort"]:
+            state.state = "READY"
+            
+            # Find active draft and abandon
+            draft_res = await db.execute(select(RetailerOnboardingDraft).where(
+                RetailerOnboardingDraft.phone_number == message.sender_phone,
+                RetailerOnboardingDraft.status == DraftStatus.IN_PROGRESS
+            ))
+            draft = draft_res.scalar_one_or_none()
+            if draft:
+                draft.status = DraftStatus.ABANDONED
+                
+            await db.commit()
+            return [{"type": "text", "text": "Operation cancelled. We've returned to the main menu."}]
+            
+        if text_lower == "restart" and state.state.startswith("ONBOARDING"):
+            state.state = "ONBOARDING_LANGUAGE"
+            # Abandon existing draft
+            draft_res = await db.execute(select(RetailerOnboardingDraft).where(
+                RetailerOnboardingDraft.phone_number == message.sender_phone,
+                RetailerOnboardingDraft.status == DraftStatus.IN_PROGRESS
+            ))
+            draft = draft_res.scalar_one_or_none()
+            if draft:
+                draft.status = DraftStatus.ABANDONED
+            
+            await db.commit()
+            return [{"type": "interactive", "text": "Let's start over.\n\nPlease select your preferred language:", "buttons": [{"id": "lang_en", "title": "English"}, {"id": "lang_hi", "title": "Hindi"}, {"id": "lang_te", "title": "Telugu"}]}]
+            
+        if text_lower in ["help", "support", "talk to boss"]:
+            # Could set state to SUPPORT, but for now just show message
+            return [{"type": "text", "text": "Support requested. A Go Chicken representative will contact you shortly."}]
+            
+        return None
+
+    @classmethod
+    async def _handle_timeout(cls, db: AsyncSession, state: ConversationState) -> Optional[List[Dict[str, Any]]]:
+        if not state.state.startswith("ONBOARDING"):
+            return None
+            
+        draft_res = await db.execute(select(RetailerOnboardingDraft).where(
+            RetailerOnboardingDraft.phone_number == state.phone_number,
+            RetailerOnboardingDraft.status == DraftStatus.IN_PROGRESS
+        ))
+        draft = draft_res.scalar_one_or_none()
         
-        # Save preference
-        user.preferred_language = chosen_lang
-        state.language = chosen_lang
-        state.state = "IDLE"
-        await db.commit()
+        if draft:
+            # 24 hour check
+            if datetime.now(timezone.utc) - draft.updated_at > timedelta(hours=24):
+                draft.status = DraftStatus.ABANDONED
+                state.state = "READY"
+                await db.commit()
+                return [{"type": "text", "text": "Registration expired due to inactivity. Please scan your QR code again to restart."}]
+                
+        return None
 
-        # Send personalized welcome with today's Live Bird price
-        from core.pricing_service import get_price_for_item
-        live_bird_price = await get_price_for_item(db, "Live Bird")
+    @classmethod
+    async def _handle_invite(cls, db: AsyncSession, state: ConversationState, message: WhatsAppMessage, user: Optional[User]) -> List[Dict[str, Any]]:
+        # Session Lock (Active Draft)
+        if state.state != "READY":
+            return [{"type": "text", "text": "Please finish your current registration first. (Type 'cancel' to restart)"}]
+            
+        if user:
+            if user.onboarding_status == "ACTIVE":
+                return [{"type": "text", "text": "Welcome back! Your number is already registered. If you need to change wholesalers, please contact your current wholesaler."}]
+            elif user.onboarding_status == "PENDING_APPROVAL":
+                state.state = "WAITING_APPROVAL"
+                await db.commit()
+                return [{"type": "text", "text": "Your registration is currently pending wholesaler approval."}]
 
-        welcome_text = get_message(
-            "WELCOME_WITH_RATE", 
-            chosen_lang, 
-            name=user.name, 
-            rate=live_bird_price
+        invite_code = message.text.replace("JOIN_GC_", "").strip()
+        
+        # Validate Invite
+        inv_res = await db.execute(select(RetailerInvitation).where(RetailerInvitation.invite_code == invite_code))
+        invite = inv_res.scalar_one_or_none()
+        
+        if not invite:
+            return [{"type": "text", "text": "This invitation is invalid. Please contact your wholesaler."}]
+            
+        if invite.status == InviteStatus.EXPIRED or (invite.expires_at and invite.expires_at < datetime.now(timezone.utc)):
+            return [{"type": "text", "text": "This invitation has expired. Please ask your wholesaler to generate a new invitation."}]
+            
+        if invite.status == InviteStatus.USED:
+            return [{"type": "text", "text": "This invitation has already been used. Contact your wholesaler."}]
+            
+        if invite.status == InviteStatus.CANCELLED:
+            return [{"type": "text", "text": "This invitation is no longer valid. Contact your wholesaler."}]
+            
+        # Create new Draft
+        draft = RetailerOnboardingDraft(
+            phone_number=message.sender_phone,
+            invite_id=invite.id,
+            tenant_id=invite.tenant_id,
+            owner_name=message.sender_name, # Default to whatsapp name
+            status=DraftStatus.IN_PROGRESS
         )
-        menu_text = get_message("MAIN_MENU", chosen_lang)
-
-        return [
-            {"type": "text", "text": welcome_text},
-            {
-                "type": "interactive",
-                "text": menu_text,
-                "buttons": ConversationService.get_main_menu_buttons()
-            }
-        ]
-
-    @staticmethod
-    async def generate_order_preview(
-        db: AsyncSession, state: ConversationState, user: User
-    ) -> dict:
-        """Generate order preview card after quantity is set."""
-        from core.pricing_service import get_price_for_item
+        db.add(draft)
+        await db.flush() # flush to get draft.id
         
-        rate = await get_price_for_item(db, state.pending_product)
-        qty = Decimal(str(state.pending_quantity))
-        total = rate * qty
-
-        # Cache for confirmation step
-        state.pending_price_per_kg = rate
-        state.pending_total = total
-        state.state = "AWAITING_CONFIRMATION"
+        db.add(RetailerOnboardingEvent(
+            draft_id=draft.id,
+            event="INVITE_OPENED"
+        ))
+        
+        # Mark invite opened
+        invite.status = InviteStatus.OPENED
+        
+        # Update State
+        state.state = "ONBOARDING_LANGUAGE"
         await db.commit()
-
-        # Fetch Khata
-        from models.khata import KhataTransaction
-        result = await db.execute(
-            select(KhataTransaction)
-            .where(KhataTransaction.retailer_id == user.id)
-            .order_by(KhataTransaction.created_at.desc())
-            .limit(1)
-        )
-        last_tx = result.scalars().first()
-        balance = last_tx.running_balance if last_tx else Decimal("0.00")
-
-        preview_text = get_message(
-            "ORDER_PREVIEW",
-            state.language,
-            product=state.pending_product,
-            qty=qty,
-            rate=rate,
-            total=total,
-            balance=balance
-        )
         
-        return {
-            "type": "interactive",
-            "text": preview_text,
-            "buttons": [
-                {"id": "confirm_order", "title": "✅ Confirm"},
-                {"id": "change_qty", "title": "✏️ Change Qty"},
-                {"id": "cancel_order", "title": "❌ Cancel"}
-            ]
+        return [{"type": "interactive", "text": "Welcome to Go Chicken Registration!\n\nPlease select your preferred language:", "buttons": [{"id": "lang_en", "title": "English"}, {"id": "lang_hi", "title": "Hindi"}, {"id": "lang_te", "title": "Telugu"}]}]
+
+    @classmethod
+    def _get_state_handler(cls, current_state: str):
+        handlers = {
+            "READY": cls._handle_ready_state,
+            "WAITING_APPROVAL": cls._handle_waiting_approval,
+            "ONBOARDING_LANGUAGE": cls._handle_onboarding_language,
+            "ONBOARDING_NAME": cls._handle_onboarding_name,
+            "ONBOARDING_LOCATION": cls._handle_onboarding_location,
+            "ONBOARDING_SHOP": cls._handle_onboarding_shop,
+            "ONBOARDING_REVIEW": cls._handle_onboarding_review,
         }
-
-    @staticmethod
-    async def handle_quantity_input(
-        db: AsyncSession, state: ConversationState, user: User, message_text: str
-    ) -> list[dict]:
-        """Extract number, validate, and move to preview."""
-        import re
-        match = re.search(r"(\d+(?:\.\d+)?)", message_text)
-        if not match:
-            return [{"type": "text", "text": get_message("INVALID_QUANTITY", state.language)}]
+        return handlers.get(current_state, cls._handle_ready_state)
         
-        qty = Decimal(match.group(1))
-        if qty <= 0 or qty > 5000:
-            return [{"type": "text", "text": get_message("INVALID_QUANTITY", state.language)}]
+    @classmethod
+    async def _handle_waiting_approval(cls, db: AsyncSession, state: ConversationState, message: WhatsAppMessage, user: Optional[User]) -> List[Dict[str, Any]]:
+        return [{"type": "text", "text": "Your registration is currently pending wholesaler approval.\n\nWe'll notify you as soon as your account is activated."}]
+
+    @classmethod
+    async def _get_active_draft(cls, db: AsyncSession, phone: str) -> RetailerOnboardingDraft:
+        draft_res = await db.execute(select(RetailerOnboardingDraft).where(
+            RetailerOnboardingDraft.phone_number == phone,
+            RetailerOnboardingDraft.status == DraftStatus.IN_PROGRESS
+        ))
+        return draft_res.scalar_one_or_none()
+
+    @classmethod
+    async def _handle_onboarding_language(cls, db: AsyncSession, state: ConversationState, message: WhatsAppMessage, user: Optional[User]) -> List[Dict[str, Any]]:
+        draft = await cls._get_active_draft(db, state.phone_number)
+        if not draft:
+            state.state = "READY"
+            await db.commit()
+            return [{"type": "text", "text": "No active registration found. Please scan your QR code."}]
             
-        state.pending_quantity = qty
+        lang = None
+        if message.button_id == "lang_en" or message.text.lower() == "english":
+            lang = "en"
+        elif message.button_id == "lang_hi" or message.text.lower() == "hindi":
+            lang = "hi"
+        elif message.button_id == "lang_te" or message.text.lower() == "telugu":
+            lang = "te"
+            
+        if not lang:
+            return [{"type": "interactive", "text": "I didn't understand that. Please select your language:", "buttons": [{"id": "lang_en", "title": "English"}, {"id": "lang_hi", "title": "Hindi"}, {"id": "lang_te", "title": "Telugu"}]}]
+            
+        draft.preferred_language = lang
+        state.language = lang
+        state.state = "ONBOARDING_NAME"
+        draft.updated_at = datetime.now(timezone.utc)
+        db.add(RetailerOnboardingEvent(
+            draft_id=draft.id,
+            event="LANGUAGE_SELECTED",
+            metadata_payload={"language": lang}
+        ))
         await db.commit()
         
-        preview_action = await ConversationService.generate_order_preview(db, state, user)
-        return [preview_action]
+        # Proceed to next question
+        return [{"type": "text", "text": "Great! What is your full name? (e.g. Ravi Kumar)"}]
 
-    @staticmethod
-    async def process_deterministic_turn(
-        db: AsyncSession, state: ConversationState, user: User, message_text: str, button_id: str | None
-    ) -> list[dict]:
-        """Process turn synchronously when state is NOT IDLE."""
+    @classmethod
+    async def _handle_onboarding_name(cls, db: AsyncSession, state: ConversationState, message: WhatsAppMessage, user: Optional[User]) -> List[Dict[str, Any]]:
+        draft = await cls._get_active_draft(db, state.phone_number)
         
-        # ── AWAITING_LANGUAGE ──────────────────────────────────────────
-        if state.state == "AWAITING_LANGUAGE":
-            return await ConversationService.handle_language_selection(db, state, user, button_id)
-
-        # ── AWAITING_PRODUCT ───────────────────────────────────────────
-        if state.state == "AWAITING_PRODUCT":
-            product_map = {
-                "product_live": "Live Bird",
-                "product_dressed": "Dressed",
-                "product_skinless": "Skinless"
-            }
-            if button_id in product_map:
-                state.pending_product = product_map[button_id]
-                state.state = "AWAITING_QUANTITY"
-                await db.commit()
-                return [{"type": "text", "text": get_message("ASK_QUANTITY", state.language, product=state.pending_product)}]
+        # Validation: Must not be only numbers/symbols
+        if not message.text or not re.search(r'[a-zA-Z]', message.text):
+            return [{"type": "text", "text": "Please enter a valid name containing letters."}]
             
-            # Reprompt
-            return [{
-                "type": "interactive",
-                "text": get_message("ASK_PRODUCT", state.language),
-                "buttons": ConversationService.get_product_buttons()
-            }]
+        draft.owner_name = message.text
+        state.state = "ONBOARDING_LOCATION"
+        draft.updated_at = datetime.now(timezone.utc)
+        db.add(RetailerOnboardingEvent(
+            draft_id=draft.id,
+            event="NAME_ENTERED",
+            metadata_payload={"name": message.text}
+        ))
+        await db.commit()
+        
+        return [{"type": "text", "text": f"Thanks, {message.text}.\n\nPlease share your shop's location using the WhatsApp attachment (📍 Share Location)."}]
 
-        # ── AWAITING_QUANTITY ──────────────────────────────────────────
-        if state.state == "AWAITING_QUANTITY":
-            return await ConversationService.handle_quantity_input(db, state, user, message_text)
+    @classmethod
+    async def _handle_onboarding_location(cls, db: AsyncSession, state: ConversationState, message: WhatsAppMessage, user: Optional[User]) -> List[Dict[str, Any]]:
+        draft = await cls._get_active_draft(db, state.phone_number)
+        
+        if not message.is_location:
+            return [{"type": "text", "text": "To continue registration, please share your location.\n\n📍 Tap the attachment icon (📎) and select 'Location'."}]
+            
+        draft.latitude = message.latitude
+        draft.longitude = message.longitude
+        state.state = "ONBOARDING_SHOP"
+        draft.updated_at = datetime.now(timezone.utc)
+        db.add(RetailerOnboardingEvent(
+            draft_id=draft.id,
+            event="LOCATION_SHARED",
+            metadata_payload={"lat": float(message.latitude), "lon": float(message.longitude)}
+        ))
+        await db.commit()
+        
+        return [{"type": "text", "text": "Location saved! What is the name of your shop? (e.g. Sri Lakshmi Chicken Center)"}]
 
-        # ── AWAITING_CONFIRMATION ──────────────────────────────────────
-        if state.state == "AWAITING_CONFIRMATION":
-            if button_id == "confirm_order":
-                from models.order import Order
-                order = Order(
-                    tenant_id=state.tenant_id,
-                    retailer_id=user.id,
-                    phone_number=user.phone,
-                    item_type=state.pending_product,
-                    quantity_kg=state.pending_quantity,
-                    unit_price=state.pending_price_per_kg,
-                    total_amount=state.pending_total,
-                    status="pending",
-                    order_source="whatsapp"
-                )
-                db.add(order)
+    @classmethod
+    async def _handle_onboarding_shop(cls, db: AsyncSession, state: ConversationState, message: WhatsAppMessage, user: Optional[User]) -> List[Dict[str, Any]]:
+        draft = await cls._get_active_draft(db, state.phone_number)
+        
+        if not message.text or len(message.text) < 3:
+            return [{"type": "text", "text": "Shop name is too short. Please enter the full name of your shop."}]
+            
+        draft.shop_name = message.text
+        state.state = "ONBOARDING_REVIEW"
+        draft.updated_at = datetime.now(timezone.utc)
+        db.add(RetailerOnboardingEvent(
+            draft_id=draft.id,
+            event="SHOP_ENTERED",
+            metadata_payload={"shop_name": message.text}
+        ))
+        await db.commit()
+        
+        summary = (
+            f"Please review your details:\n\n"
+            f"👤 Owner: {draft.owner_name}\n"
+            f"🏪 Shop: {draft.shop_name}\n"
+            f"🌐 Language: {draft.preferred_language}\n"
+            f"📍 Location: Saved ✓\n\n"
+            f"Is this correct?"
+        )
+        return [{"type": "interactive", "text": summary, "buttons": [{"id": "btn_confirm", "title": "Submit Registration"}, {"id": "btn_edit", "title": "Restart Flow"}]}]
+
+    @classmethod
+    async def _handle_onboarding_review(cls, db: AsyncSession, state: ConversationState, message: WhatsAppMessage, user: Optional[User]) -> List[Dict[str, Any]]:
+        draft = await cls._get_active_draft(db, state.phone_number)
+        
+        if message.button_id == "btn_edit" or message.text.lower() == "restart":
+            state.state = "ONBOARDING_LANGUAGE"
+            draft.updated_at = datetime.now(timezone.utc)
+            await db.commit()
+            return [{"type": "interactive", "text": "Let's try again.\n\nPlease select your preferred language:", "buttons": [{"id": "lang_en", "title": "English"}, {"id": "lang_hi", "title": "Hindi"}, {"id": "lang_te", "title": "Telugu"}]}]
+            
+        if message.button_id == "btn_confirm" or message.text.lower() == "submit":
+            # Idempotency check: see if user was already created (e.g. Meta retried)
+            existing_user_res = await db.execute(select(User).where(User.phone == draft.phone_number))
+            existing_user = existing_user_res.scalar_one_or_none()
+            
+            if existing_user:
+                # If they already exist and we got a duplicate confirm webhook, just return the exact same success message
+                # Don't recreate the user.
+                state.state = "WAITING_APPROVAL"
                 await db.commit()
-                await db.refresh(order)
-                
-                # Perform transition safely via OrderService
-                from core.order_service import OrderService
-                res = await OrderService.confirm_order(
-                    db=db, tenant_id=state.tenant_id, order=order, 
-                    unit_price=state.pending_price_per_kg,
-                    performed_by=f"WHATSAPP_{user.phone}"
+                msg = (
+                    f"Registration Submitted\n"
+                    f"━━━━━━━━━━━━━━\n"
+                    f"Retailer ID\n"
+                    f"{existing_user.retailer_id}\n\n"
+                    f"Status\n"
+                    f"Pending Approval\n"
+                    f"━━━━━━━━━━━━━━\n"
+                    f"You will receive a WhatsApp notification once approved."
                 )
-                
-                await ConversationService.reset_state(db, state)
-                if res.success:
-                    return [{"type": "text", "text": get_message("ORDER_CONFIRMED", state.language, order_id=order.id, qty=order.quantity_kg, product=order.item_type)}]
-                return [{"type": "text", "text": f"Error: {res.message}"}]
-                
-            elif button_id == "cancel_order":
-                await ConversationService.reset_state(db, state)
-                return [{"type": "text", "text": get_message("ORDER_CANCELLED", state.language)}]
-                
-            elif button_id == "change_qty":
-                state.state = "AWAITING_QUANTITY"
-                await db.commit()
-                return [{"type": "text", "text": get_message("ASK_QUANTITY", state.language, product=state.pending_product)}]
-                
-            return [await ConversationService.generate_order_preview(db, state, user)]
+                return [{"type": "text", "text": msg}]
+        
+            # Fetch atomic sequence ID
+            seq_val = await db.scalar(text("SELECT nextval('retailer_id_seq')"))
+            retailer_id = f"GC-RET-{seq_val:06d}"
 
-        # Failsafe
-        await ConversationService.reset_state(db, state)
-        return [{"type": "text", "text": get_message("RECOVERY_MENU", state.language)}]
+            # 1. Create User
+            new_user = User(
+                phone=draft.phone_number,
+                whatsapp_id=draft.phone_number,
+                role=UserRole.RETAILER,
+                tenant_id=draft.tenant_id,
+                name=draft.owner_name,
+                shop_name=draft.shop_name,
+                preferred_language=draft.preferred_language,
+                onboarding_status="PENDING_APPROVAL",
+                retailer_id=retailer_id
+            )
+            db.add(new_user)
+            
+            # 2. Update Draft & Invite & Add Event
+            draft.status = DraftStatus.COMPLETED
+            draft.updated_at = datetime.now(timezone.utc)
+            
+            db.add(RetailerOnboardingEvent(
+                draft_id=draft.id,
+                event="SUBMITTED"
+            ))
+            
+            inv_res = await db.execute(select(RetailerInvitation).where(RetailerInvitation.id == draft.invite_id))
+            invite = inv_res.scalar_one_or_none()
+            if invite:
+                invite.status = InviteStatus.USED
+                invite.used_at = datetime.now(timezone.utc)
+            
+            state.state = "WAITING_APPROVAL"
+            await db.commit()
+            
+            # 3. Fire SSE
+            await broadcast_event("NEW_RETAILER_REGISTRATION", {
+                "retailer_name": draft.owner_name,
+                "shop_name": draft.shop_name,
+                "phone": draft.phone_number
+            })
+            
+            # 4. Return Killer Feature Progress
+            msg = (
+                f"Registration Submitted\n"
+                f"━━━━━━━━━━━━━━\n"
+                f"Retailer ID\n"
+                f"{new_user.retailer_id}\n\n"
+                f"Status\n"
+                f"Pending Approval\n"
+                f"━━━━━━━━━━━━━━\n"
+                f"You will receive a WhatsApp notification once approved.\n\n"
+                f"Current Progress\n"
+                f"✅ Language\n"
+                f"✅ Name\n"
+                f"✅ Location\n"
+                f"✅ Shop\n"
+                f"⏳ Approval"
+            )
+            return [{"type": "text", "text": msg}]
+            
+        return [{"type": "interactive", "text": "I didn't understand. Please confirm your details.", "buttons": [{"id": "btn_confirm", "title": "Submit Registration"}, {"id": "btn_edit", "title": "Restart Flow"}]}]
+
+    @classmethod
+    async def _handle_ready_state(cls, db: AsyncSession, state: ConversationState, message: WhatsAppMessage, user: Optional[User]) -> List[Dict[str, Any]]:
+        # Button Overrides
+        if message.button_id == "menu_order":
+            return [{"type": "text", "text": "Mock: Start order flow."}] # Placeholder for actual order logic
+        elif message.button_id == "menu_prices":
+            return [{"type": "text", "text": "🐔 Live Bird: ₹180/kg\n🍗 Dressed: ₹250/kg\n🥩 Skinless: ₹320/kg"}]
+            
+        if not message.text:
+            return cls._build_recovery_menu()
+            
+        # Use AI Intent Classification
+        classification = await classify_message(message.text)
+        
+        if not classification or classification.confidence < 0.8:
+            return cls._build_recovery_menu()
+            
+        return await cls._execute_intent(classification, state, user)
+        
+    @classmethod
+    def _build_recovery_menu(cls) -> List[Dict[str, Any]]:
+        msg = "I didn't understand. Choose one:"
+        buttons = [
+            {"id": "menu_order", "title": "📦 Place Order"},
+            {"id": "menu_prices", "title": "💰 Today's Prices"},
+            {"id": "menu_khata", "title": "💳 Khata"}
+        ]
+        return [{"type": "interactive", "text": msg, "buttons": buttons}]
+
+    @classmethod
+    async def _execute_intent(cls, classification, state: ConversationState, user: Optional[User]) -> List[Dict[str, Any]]:
+        intent = classification.intent
+        
+        if intent == "ORDER":
+            return [{"type": "text", "text": f"Mock: Placing order for {classification.quantity_kg}kg {classification.item}"}]
+        elif intent == "PRICE_INQUIRY":
+            return [{"type": "text", "text": "🐔 Live Bird: ₹180/kg\n🍗 Dressed: ₹250/kg\n🥩 Skinless: ₹320/kg"}]
+        elif intent == "GREETING":
+            return cls._build_recovery_menu()
+        elif intent == "KHATA":
+            return [{"type": "text", "text": "Mock: Your current balance is ₹0.00"}]
+        else:
+            return cls._build_recovery_menu()

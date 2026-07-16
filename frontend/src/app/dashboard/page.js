@@ -23,6 +23,7 @@ import { KhataTab } from '@/components/dashboard/KhataTab';
 import { AITab } from '@/components/dashboard/AITab';
 import { InventoryTab } from '@/components/dashboard/InventoryTab';
 import { QuotesTab } from '@/components/dashboard/QuotesTab';
+import { RetailersTab } from '@/components/dashboard/RetailersTab';
 
 function GoChickenDashboard() {
   const router = useRouter();
@@ -186,6 +187,7 @@ function GoChickenDashboard() {
           { id: 'orders', icon: ShoppingCart, label: t('Orders & Pricing') },
           { id: 'quotes', icon: FileText, label: t('Quotes & Pricing') },
           { id: 'inventory', icon: Package, label: 'Inventory' },
+          { id: 'retailers', icon: User, label: 'Retailers' },
           { id: 'fleet', icon: Truck, label: t('IoT Fleet'), alert: activeAlerts > 0 },
           { id: 'khata', icon: Wallet, label: t('Retailer Khata') },
           { id: 'ai', icon: BrainCircuit, label: t('AI Forecasting') }
@@ -328,7 +330,7 @@ function GoChickenDashboard() {
     const navItems = [
       { id: 'overview', icon: LayoutDashboard, label: t('Overview') },
       { id: 'orders', icon: ShoppingCart, label: t('Orders') },
-      { id: 'quotes', icon: FileText, label: t('Quotes') },
+      { id: 'retailers', icon: User, label: t('Retailers') },
       { id: 'khata', icon: Wallet, label: t('Khata') }
     ];
 
@@ -402,6 +404,7 @@ function GoChickenDashboard() {
           {activeTab === 'orders' && <OrdersTab />}
           {activeTab === 'inventory' && <InventoryTab />}
           {activeTab === 'khata' && <KhataTab setShowPaymentModal={setShowPaymentModal} />}
+          {activeTab === 'retailers' && <RetailersTab />}
           {activeTab === 'ai' && <AITab />}
           {activeTab === 'quotes' && <QuotesTab />}
 

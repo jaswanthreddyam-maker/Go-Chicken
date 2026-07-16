@@ -41,3 +41,7 @@ from models.conversation_state import ConversationState
 
 # Import dependent models last (resolves string relationships)
 from models.tenant import Tenant
+
+# Onboarding Models
+from models.invitation import RetailerInvitation, InviteSource, InviteStatus
+from models.onboarding import RetailerOnboardingDraft, DraftStatus
