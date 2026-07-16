@@ -249,17 +249,22 @@ async def oauth_google(request: Request, body: OAuthRequest, response: Response,
             
             # Create User
             user = User(
-                tenant_id=tenant.id,
-                role=UserRole.ADMIN,
-                name=full_name,
+                tenant_id=tenant_id,
                 email=email,
+                name=full_name,
                 auth_provider="google",
                 provider_user_id=provider_user_id,
                 avatar_url=avatar_url,
-                phone=None, # They can fill this later
-                password_hash=None
+                role=UserRole.ADMIN,
             )
             db.add(user)
+            await db.commit()
+            
+            # Seed inventory and pricing for the new tenant
+            from core.inventory_service import InventoryService
+            from core.pricing_service import get_all_prices
+            await InventoryService.get_all_inventory(db, tenant_id)
+            await get_all_prices(db)
             
             # Create Profile
             profile = BusinessProfile(

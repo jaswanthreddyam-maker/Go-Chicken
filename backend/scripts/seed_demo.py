@@ -250,10 +250,9 @@ async def seed_demo_data(db: AsyncSession):
     # 4. Pricing & Quotes
     # ─────────────────────────────────────────────────────────────────────────────
     skus = [
-        ("Live Bird", Decimal("135.00")),
-        ("Broiler", Decimal("155.00")),
+        ("BROILER", Decimal("155.00")),
         ("DESI", Decimal("210.00")),
-        ("Country Chicken", Decimal("265.00")),
+        ("LAYER", Decimal("130.00")),
     ]
     for sku_name, price in skus:
         pp = ProductPrice(
@@ -308,11 +307,11 @@ async def seed_demo_data(db: AsyncSession):
     quote_item = QuoteItem(
         id=uuid.uuid4(),
         quote_id=quote.id,
-        sku="Live Bird",
+        sku="BROILER",
         quantity_kg=Decimal("100.00"),
-        unit_price=Decimal("135.00"),
+        unit_price=Decimal("155.00"),
         pricing_source="TIER_PRICEBOOK",
-        line_total=Decimal("13500.00"),
+        line_total=Decimal("15500.00"),
     )
     db.add(quote_item)
 
@@ -320,10 +319,9 @@ async def seed_demo_data(db: AsyncSession):
     # 5. Inventory & Transactions
     # ─────────────────────────────────────────────────────────────────────────────
     inv_data = [
-        ("Live Bird", Decimal("4500.00"), Decimal("600.00"), Decimal("800.00"), Decimal("3100.00"), Decimal("500.00"), Decimal("800.00")),
-        ("Broiler", Decimal("3200.00"), Decimal("400.00"), Decimal("500.00"), Decimal("2300.00"), Decimal("400.00"), Decimal("600.00")),
+        ("BROILER", Decimal("4500.00"), Decimal("600.00"), Decimal("800.00"), Decimal("3100.00"), Decimal("500.00"), Decimal("800.00")),
         ("DESI", Decimal("1200.00"), Decimal("150.00"), Decimal("200.00"), Decimal("850.00"), Decimal("200.00"), Decimal("350.00")),
-        ("Country Chicken", Decimal("800.00"), Decimal("100.00"), Decimal("100.00"), Decimal("600.00"), Decimal("150.00"), Decimal("250.00")),
+        ("LAYER", Decimal("800.00"), Decimal("100.00"), Decimal("100.00"), Decimal("600.00"), Decimal("150.00"), Decimal("250.00")),
     ]
     inv_items = {}
     for item_type, avail, res, loaded, deliv, min_s, reorder in inv_data:
@@ -365,8 +363,8 @@ async def seed_demo_data(db: AsyncSession):
     # 6. Orders across 14 days (120 orders)
     # ─────────────────────────────────────────────────────────────────────────────
     statuses = ["delivered", "delivered", "delivered", "out_for_delivery", "loaded", "confirmed", "pending"]
-    item_types = ["Live Bird", "Broiler", "DESI", "Country Chicken"]
-    prices_map = {"Live Bird": Decimal("135.00"), "Broiler": Decimal("155.00"), "DESI": Decimal("210.00"), "Country Chicken": Decimal("265.00")}
+    item_types = ["BROILER", "DESI", "LAYER"]
+    prices_map = {"BROILER": Decimal("155.00"), "DESI": Decimal("210.00"), "LAYER": Decimal("130.00")}
 
     orders = []
     for i in range(120):

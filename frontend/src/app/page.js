@@ -464,6 +464,10 @@ export default function LandingPage() {
     const t = setTimeout(() => {
       setMounted(true);
       if (typeof window !== "undefined") {
+        if (window.location.hash.includes("access_token")) {
+          router.push("/auth/callback" + window.location.hash);
+          return;
+        }
         sessionStorage.setItem("gc_visited_landing", "true");
         const userStr = localStorage.getItem("gc_user");
         if (userStr) {
@@ -472,7 +476,7 @@ export default function LandingPage() {
       }
     }, 0);
     return () => clearTimeout(t);
-  }, []);
+  }, [router]);
 
   const handleGetStarted = (e, fallbackRoute = "/signup") => {
     e.preventDefault();
