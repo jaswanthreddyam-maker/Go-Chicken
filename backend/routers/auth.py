@@ -30,7 +30,8 @@ from core.config import get_settings
 from models.tenant import Tenant
 from models.user import User, UserRole
 from models.profile import BusinessProfile
-from schemas.auth import SignupRequest, LoginRequest, AuthResponse
+from schemas.auth import SignupRequest, LoginRequest, AuthResponse, OAuthRequest
+from supabase import create_client, Client
 
 logger = logging.getLogger(__name__)
 
@@ -194,6 +195,110 @@ async def login(request: Request, body: LoginRequest, response: Response, db: As
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="Service temporarily unavailable. Please try again later.",
+        )
+
+# ── OAuth ─────────────────────────────────────────────────────────────
+@router.post("/oauth/google", response_model=AuthResponse)
+@limiter.limit("10/minute")
+async def oauth_google(request: Request, body: OAuthRequest, response: Response, db: AsyncSession = Depends(get_db)):
+    """Authenticate with Supabase Google OAuth access token."""
+    settings = get_settings()
+    
+    if not settings.SUPABASE_URL or not settings.SUPABASE_ANON_KEY:
+        raise HTTPException(status_code=500, detail="Supabase not configured")
+        
+    try:
+        supabase: Client = create_client(settings.SUPABASE_URL, settings.SUPABASE_ANON_KEY)
+        # Verify the token by fetching the user profile from Supabase
+        user_resp = supabase.auth.get_user(body.access_token)
+        sb_user = user_resp.user
+        
+        if not sb_user:
+            raise HTTPException(status_code=401, detail="Invalid OAuth token")
+            
+        email = sb_user.email
+        provider_user_id = sb_user.id
+        
+        # Identity meta
+        user_meta = sb_user.user_metadata or {}
+        full_name = user_meta.get("full_name", "Google User")
+        avatar_url = user_meta.get("avatar_url", None)
+        
+        # Find user by email or provider_user_id
+        result = await db.execute(
+            select(User).where((User.email == email) | (User.provider_user_id == provider_user_id))
+        )
+        user = result.scalar_one_or_none()
+        
+        if user:
+            # Link account if not already linked
+            if not user.provider_user_id:
+                user.auth_provider = "google"
+                user.provider_user_id = provider_user_id
+                user.avatar_url = avatar_url
+                await db.commit()
+            
+            tenant_id = user.tenant_id
+        else:
+            # Automatic Tenant Creation
+            tenant = Tenant(name=f"{full_name}'s Business")
+            db.add(tenant)
+            await db.flush()
+            
+            tenant_id = tenant.id
+            
+            # Create User
+            user = User(
+                tenant_id=tenant.id,
+                role=UserRole.ADMIN,
+                name=full_name,
+                email=email,
+                auth_provider="google",
+                provider_user_id=provider_user_id,
+                avatar_url=avatar_url,
+                phone=None, # They can fill this later
+                password_hash=None
+            )
+            db.add(user)
+            
+            # Create Profile
+            profile = BusinessProfile(
+                tenant_id=tenant.id,
+                admin_name=full_name,
+                business_name=f"{full_name}'s Business",
+                role="Owner",
+                app_language="English",
+                iot_alerts_enabled=True,
+                financial_alerts_enabled=True,
+            )
+            db.add(profile)
+            
+            await db.commit()
+            await db.refresh(user)
+            
+        # Issue local token
+        token = _create_token(user.id, tenant_id)
+        
+        response.set_cookie(
+            "gc_auth", token,
+            max_age=60*60*24*7, httponly=True, secure=True, samesite="lax"
+        )
+
+        return AuthResponse(
+            access_token=token,
+            user_id=user.id,
+            tenant_id=tenant_id,
+            name=user.name,
+            role=user.role.value,
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("OAuth error: %s", e)
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Could not verify OAuth token.",
         )
 
 

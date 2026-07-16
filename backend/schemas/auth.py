@@ -28,6 +28,13 @@ class LoginRequest(BaseModel):
     password: str = Field(..., min_length=1, max_length=128)
 
 
+class OAuthRequest(BaseModel):
+    """OAuth login via Supabase."""
+
+    access_token: str
+    provider_token: str
+
+
 class AuthResponse(BaseModel):
     """Returned on successful signup or login."""
 

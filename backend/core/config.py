@@ -29,9 +29,13 @@ class Settings(BaseSettings):
     OLLAMA_CONFIDENCE_THRESHOLD: float = 0.6  # Below this → fall back to regex
 
     # WhatsApp Cloud API (Meta)
-    WHATSAPP_VERIFY_TOKEN: str = "gochicken123"
-    WHATSAPP_API_TOKEN: str = ""            # Meta Graph API access token (for sending replies)
-    WHATSAPP_PHONE_NUMBER_ID: str = ""      # Your WhatsApp Business phone number ID
+    WHATSAPP_VERIFY_TOKEN: str = ""
+    WHATSAPP_API_TOKEN: str = ""
+    WHATSAPP_PHONE_NUMBER_ID: str = ""
+
+    # Supabase (for Auth Token Verification)
+    SUPABASE_URL: str = ""
+    SUPABASE_ANON_KEY: str = ""
 
     # Cloudinary (profile picture uploads)
     CLOUDINARY_CLOUD_NAME: str = ""

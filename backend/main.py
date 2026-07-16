@@ -182,5 +182,6 @@ async def system_info():
         "ai_provider": getattr(settings, 'AI_PROVIDER', 'unknown'),
         "database": "supabase" if "supabase" in settings.DATABASE_URL else "local",
         "build": "2026-07-16",
-        "version": settings.APP_VERSION
+        "version": settings.APP_VERSION,
+        "whatsapp_token_configured": bool(settings.WHATSAPP_API_TOKEN)
     }

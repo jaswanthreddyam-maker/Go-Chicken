@@ -4,6 +4,7 @@ import React, { useState, useEffect } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ArrowRight, Eye, EyeOff, Phone, Lock } from "lucide-react";
+import { supabase } from "@/lib/supabase";
 
 const getApiBase = () => {
   let url = process.env.NEXT_PUBLIC_API_URL;
@@ -188,9 +189,14 @@ export default function LoginPage() {
             {/* Google Login */}
             <button
               type="button"
-              onClick={() => {
-                // TODO: Wire up Google OAuth redirect
-                window.location.href = `${API_BASE}/auth/google/login`;
+              onClick={async () => {
+                const { error } = await supabase.auth.signInWithOAuth({
+                  provider: 'google',
+                  options: {
+                    redirectTo: `${window.location.origin}/auth/callback`,
+                  },
+                });
+                if (error) setError(error.message);
               }}
               className="w-full flex items-center justify-center gap-3 px-7 py-3.5 bg-white border border-[#EBEBEB] text-sm font-semibold text-[#111111] hover:border-[#111111] hover:scale-[1.01] active:scale-[0.99] transition-all"
             >

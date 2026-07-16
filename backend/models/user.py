@@ -32,6 +32,11 @@ class User(Base):
     email: Mapped[str | None] = mapped_column(String(320), unique=True)
     google_id: Mapped[str | None] = mapped_column(String(255), unique=True)
     whatsapp_id: Mapped[str | None] = mapped_column(String(255), unique=True)
+    
+    # OAuth Identity Fields
+    auth_provider: Mapped[str | None] = mapped_column(String(50), default="local")
+    provider_user_id: Mapped[str | None] = mapped_column(String(255), unique=True)
+    avatar_url: Mapped[str | None] = mapped_column(Text)
     password_hash: Mapped[str | None] = mapped_column(String(255))
 
     # Retailer routing fields
