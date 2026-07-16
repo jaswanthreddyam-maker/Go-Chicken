@@ -254,7 +254,7 @@ class ConversationService:
                     unit_price=state.pending_price_per_kg,
                     total_amount=state.pending_total,
                     status="pending",
-                    source="whatsapp"
+                    order_source="whatsapp"
                 )
                 db.add(order)
                 await db.commit()
