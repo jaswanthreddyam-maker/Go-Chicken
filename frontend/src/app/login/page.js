@@ -61,7 +61,13 @@ export default function LoginPage() {
       const data = await res.json();
 
       if (!res.ok) {
-        throw new Error(data.detail || "Login failed. Please try again.");
+        let errorMessage = "Login failed. Please try again.";
+        if (Array.isArray(data.detail)) {
+          errorMessage = data.detail[0].msg || errorMessage;
+        } else if (typeof data.detail === "string") {
+          errorMessage = data.detail;
+        }
+        throw new Error(errorMessage);
       }
 
       // Store user details, token is now handled via HTTP-only cookie

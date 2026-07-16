@@ -53,7 +53,8 @@ export default function SignupPage() {
     if (!form.business_name.trim()) return setError("Business name is required.");
     if (!form.admin_name.trim()) return setError("Your name is required.");
     if (!form.phone.trim() || form.phone.length < 10) return setError("Enter a valid phone number.");
-    if (form.password.length < 6) return setError("Password must be at least 6 characters.");
+    if (form.password.length < 8) return setError("Password must be at least 8 characters.");
+    if (!/[A-Za-z]/.test(form.password) || !/\d/.test(form.password)) return setError("Password must contain both letters and numbers.");
 
     setIsSubmitting(true);
     try {
@@ -66,7 +67,13 @@ export default function SignupPage() {
       const data = await res.json();
 
       if (!res.ok) {
-        throw new Error(data.detail || "Signup failed. Please try again.");
+        let errorMessage = "Signup failed. Please try again.";
+        if (Array.isArray(data.detail)) {
+          errorMessage = data.detail[0].msg || errorMessage;
+        } else if (typeof data.detail === "string") {
+          errorMessage = data.detail;
+        }
+        throw new Error(errorMessage);
       }
 
       // Store user details, token is now handled via HTTP-only cookie
