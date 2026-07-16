@@ -31,7 +31,7 @@ async def classify_message(message: str) -> MessageClassification | None:
                     "Content-Type": "application/json"
                 },
                 json={
-                    "model": "llama3-8b-8192",  # Fast and extremely cheap/free
+                    "model": "llama-3.1-8b-instant",  # Updated from decommissioned llama3-8b-8192
                     "messages": [
                         {"role": "system", "content": CLASSIFY_SYSTEM_PROMPT},
                         {"role": "user", "content": f'Classify this WhatsApp message:\n"{safe_message}"'}
