@@ -108,7 +108,7 @@ class ProjectionMetadata(Base):
 
 class AnalyticsEventProcessed(Base):
     """Idempotent replay protection index guaranteeing exactly-once projection updates."""
-    __tablename__ = "analytics_event_processed"
+    __tablename__ = "analytics_events_processed"
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
     tenant_id: Mapped[uuid.UUID] = mapped_column(nullable=False, index=True)
