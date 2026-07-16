@@ -35,6 +35,7 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=[
         settings.FRONTEND_URL,
+        "https://go-chicken.vercel.app",
         "https://go-chicken-steel.vercel.app"
     ],
     allow_credentials=True,
