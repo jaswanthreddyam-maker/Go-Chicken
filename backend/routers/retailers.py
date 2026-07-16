@@ -9,6 +9,7 @@ import urllib.parse
 from decimal import Decimal
 
 from core.database import get_db
+from core.config import get_settings
 from models.user import User, UserRole
 from models.tenant import Tenant
 from models.invitation import RetailerInvitation, InviteSource, InviteStatus
@@ -63,7 +64,8 @@ async def create_invite(
     await db.commit()
     await db.refresh(invite)
 
-    whatsapp_bot_number = "919999999999" # Mock bot number
+    settings = get_settings()
+    whatsapp_bot_number = getattr(settings, "WHATSAPP_BOT_PHONE_NUMBER", "15551701265") # Fallback to Meta Test Number
     message = urllib.parse.quote(f"JOIN_GC_{invite_code}")
     qr_url = f"https://wa.me/{whatsapp_bot_number}?text={message}"
 
