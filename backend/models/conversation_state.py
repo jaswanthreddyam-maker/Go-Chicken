@@ -21,8 +21,6 @@ class ConversationState(Base):
     pending_product: Mapped[str | None] = mapped_column(String(50))
     pending_quantity: Mapped[Numeric | None] = mapped_column(Numeric(10, 2))
     pending_quote_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("pricing_quotes.id", ondelete="SET NULL"))
-    pending_price_per_kg: Mapped[Numeric | None] = mapped_column(Numeric(10, 2))
-    pending_total: Mapped[Numeric | None] = mapped_column(Numeric(12, 2))
     
     handoff_requested: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     last_message: Mapped[str | None] = mapped_column(Text)

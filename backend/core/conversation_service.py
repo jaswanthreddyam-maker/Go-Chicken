@@ -12,6 +12,12 @@ from models.invitation import RetailerInvitation, InviteStatus
 from models.onboarding import RetailerOnboardingDraft, DraftStatus, RetailerOnboardingEvent
 from core.ai_provider import classify_message
 from core.event_broadcaster import broadcast_event
+from decimal import Decimal
+from core.quote_service import QuoteService, QuoteExpiredError
+from core.pricing_service import PricingService
+from core.order_service import OrderService
+from core.outbox_service import OutboxService
+from models.pricing import Quote
 
 logger = logging.getLogger(__name__)
 
@@ -123,6 +129,19 @@ class ConversationService:
 
     @classmethod
     async def _handle_timeout(cls, db: AsyncSession, state: ConversationState) -> Optional[List[Dict[str, Any]]]:
+        now = datetime.now(timezone.utc)
+        
+        if state.state.startswith("AWAITING_"):
+            # Ensure it is timezone aware
+            updated = state.updated_at.replace(tzinfo=timezone.utc) if state.updated_at.tzinfo is None else state.updated_at
+            if updated and now - updated > timedelta(hours=24):
+                state.state = "READY"
+                state.pending_product = None
+                state.pending_quantity = None
+                state.pending_quote_id = None
+                await db.commit()
+                return [{"type": "text", "text": "Order session expired due to inactivity. You can start a new order anytime."}]
+                
         if not state.state.startswith("ONBOARDING"):
             return None
             
@@ -134,7 +153,8 @@ class ConversationService:
         
         if draft:
             # 24 hour check
-            if datetime.now(timezone.utc) - draft.updated_at > timedelta(hours=24):
+            updated = draft.updated_at.replace(tzinfo=timezone.utc) if draft.updated_at.tzinfo is None else draft.updated_at
+            if now - updated > timedelta(hours=24):
                 draft.status = DraftStatus.ABANDONED
                 state.state = "READY"
                 await db.commit()
@@ -209,6 +229,9 @@ class ConversationService:
             "ONBOARDING_LOCATION": cls._handle_onboarding_location,
             "ONBOARDING_SHOP": cls._handle_onboarding_shop,
             "ONBOARDING_REVIEW": cls._handle_onboarding_review,
+            "AWAITING_PRODUCT": cls._handle_awaiting_product,
+            "AWAITING_QUANTITY": cls._handle_awaiting_quantity,
+            "AWAITING_CONFIRMATION": cls._handle_awaiting_confirmation,
         }
         return handlers.get(current_state, cls._handle_ready_state)
         
@@ -424,7 +447,7 @@ class ConversationService:
     async def _handle_ready_state(cls, db: AsyncSession, state: ConversationState, message: WhatsAppMessage, user: Optional[User]) -> List[Dict[str, Any]]:
         # Button Overrides
         if message.button_id == "menu_order":
-            return [{"type": "text", "text": "Mock: Start order flow."}] # Placeholder for actual order logic
+            return await cls._advance_order_state(db, state, user)
         elif message.button_id == "menu_prices":
             return [{"type": "text", "text": "🐔 Live Bird: ₹180/kg\n🍗 Dressed: ₹250/kg\n🥩 Skinless: ₹320/kg"}]
             
@@ -437,7 +460,7 @@ class ConversationService:
         if not classification or classification.confidence < 0.8:
             return cls._build_recovery_menu()
             
-        return await cls._execute_intent(classification, state, user)
+        return await cls._execute_intent(db, classification, state, user)
         
     @classmethod
     def _build_recovery_menu(cls) -> List[Dict[str, Any]]:
@@ -450,11 +473,31 @@ class ConversationService:
         return [{"type": "interactive", "text": msg, "buttons": buttons}]
 
     @classmethod
-    async def _execute_intent(cls, classification, state: ConversationState, user: Optional[User]) -> List[Dict[str, Any]]:
+    def _normalize_product(cls, product_name: str) -> Optional[str]:
+        if not product_name:
+            return None
+        norm = product_name.lower()
+        if any(x in norm for x in ["live", "broiler", "lb"]):
+            return "Live Bird"
+        elif any(x in norm for x in ["dress", "with skin"]):
+            return "Dressed"
+        elif any(x in norm for x in ["skinless", "without skin"]):
+            return "Skinless"
+        return product_name
+
+    @classmethod
+    async def _execute_intent(cls, db: AsyncSession, classification, state: ConversationState, user: Optional[User]) -> List[Dict[str, Any]]:
         intent = classification.intent
         
         if intent == "ORDER":
-            return [{"type": "text", "text": f"Mock: Placing order for {classification.quantity_kg}kg {classification.item}"}]
+            if classification.item:
+                state.pending_product = cls._normalize_product(classification.item)
+            if classification.quantity_kg and classification.quantity_kg > 0:
+                state.pending_quantity = Decimal(str(classification.quantity_kg))
+            
+            await db.commit()
+            return await cls._advance_order_state(db, state, user)
+            
         elif intent == "PRICE_INQUIRY":
             return [{"type": "text", "text": "🐔 Live Bird: ₹180/kg\n🍗 Dressed: ₹250/kg\n🥩 Skinless: ₹320/kg"}]
         elif intent == "GREETING":
@@ -463,3 +506,179 @@ class ConversationService:
             return [{"type": "text", "text": "Mock: Your current balance is ₹0.00"}]
         else:
             return cls._build_recovery_menu()
+
+    @classmethod
+    async def _advance_order_state(cls, db: AsyncSession, state: ConversationState, user: User) -> List[Dict[str, Any]]:
+        if not state.pending_product:
+            state.state = "AWAITING_PRODUCT"
+            await db.commit()
+            return [{
+                "type": "interactive", 
+                "text": "Which product would you like to order?", 
+                "buttons": [
+                    {"id": "prod_live", "title": "🐔 Live Bird"},
+                    {"id": "prod_dressed", "title": "🍗 Dressed"},
+                    {"id": "prod_skinless", "title": "🥩 Skinless"}
+                ]
+            }]
+            
+        if not state.pending_quantity:
+            state.state = "AWAITING_QUANTITY"
+            await db.commit()
+            return [{"type": "text", "text": f"How many KG of {state.pending_product} do you need?"}]
+            
+        # Both exist, create quote snapshot
+        pricing_service = PricingService()
+        quote_service = QuoteService(pricing_service)
+        
+        quote = await quote_service.create_quote(
+            db=db,
+            tenant_id=state.tenant_id,
+            customer_id=user.id,
+            quote_number=f"QT-{uuid.uuid4().hex[:8].upper()}",
+            items_input=[{
+                "sku": state.pending_product,
+                "quantity_kg": state.pending_quantity
+            }],
+            expires_at=datetime.now(timezone.utc) + timedelta(minutes=15),
+            commit=True
+        )
+        
+        state.pending_quote_id = quote.id
+        state.state = "AWAITING_CONFIRMATION"
+        await db.commit()
+        
+        # Format the Preview Card
+        total_amt = f"{quote.total_amount:,.2f}"
+        rate = f"{(quote.total_amount / state.pending_quantity):,.2f}"
+        
+        msg = (
+            f"📦 *Quote Preview*\n"
+            f"━━━━━━━━━━━━━━\n"
+            f"Product: {state.pending_product}\n"
+            f"Quantity: {state.pending_quantity} KG\n"
+            f"Rate: ₹{rate}/KG\n"
+            f"Total: *₹{total_amt}*\n"
+            f"━━━━━━━━━━━━━━\n"
+        )
+        
+        return [{
+            "type": "interactive", 
+            "text": msg, 
+            "buttons": [
+                {"id": "btn_confirm_order", "title": "✅ Confirm"},
+                {"id": "btn_cancel_order", "title": "❌ Cancel"}
+            ]
+        }]
+
+    @classmethod
+    async def _handle_awaiting_product(cls, db: AsyncSession, state: ConversationState, message: WhatsAppMessage, user: Optional[User]) -> List[Dict[str, Any]]:
+        # If user typed something instead of clicking button, maybe AI can extract it
+        if message.text and not message.button_id:
+            classification = await classify_message(message.text)
+            if classification and classification.item:
+                state.pending_product = cls._normalize_product(classification.item)
+            if classification and classification.quantity_kg and classification.quantity_kg > 0:
+                state.pending_quantity = Decimal(str(classification.quantity_kg))
+        else:
+            prod_map = {"prod_live": "Live Bird", "prod_dressed": "Dressed", "prod_skinless": "Skinless"}
+            if message.button_id in prod_map:
+                state.pending_product = prod_map[message.button_id]
+
+        if not state.pending_product:
+            return [{
+                "type": "interactive", 
+                "text": "Please choose a product:", 
+                "buttons": [
+                    {"id": "prod_live", "title": "🐔 Live Bird"},
+                    {"id": "prod_dressed", "title": "🍗 Dressed"},
+                    {"id": "prod_skinless", "title": "🥩 Skinless"}
+                ]
+            }]
+            
+        await db.commit()
+        return await cls._advance_order_state(db, state, user)
+
+    @classmethod
+    async def _handle_awaiting_quantity(cls, db: AsyncSession, state: ConversationState, message: WhatsAppMessage, user: Optional[User]) -> List[Dict[str, Any]]:
+        if message.button_id == "btn_cancel_order":
+            state.state = "READY"
+            state.pending_product = None
+            state.pending_quantity = None
+            await db.commit()
+            return [{"type": "text", "text": "Order cancelled."}]
+            
+        text_val = message.text
+        match = re.search(r"(\d+(?:\.\d+)?)", text_val)
+        if not match:
+            return [{"type": "text", "text": "Please enter a valid number for quantity (e.g., 50 or 12.5):"}]
+            
+        qty = Decimal(match.group(1))
+        if qty <= 0 or qty > 5000:
+            return [{"type": "text", "text": "Please enter a valid quantity between 1 and 5000 KG:"}]
+            
+        state.pending_quantity = qty
+        await db.commit()
+        return await cls._advance_order_state(db, state, user)
+
+    @classmethod
+    async def _handle_awaiting_confirmation(cls, db: AsyncSession, state: ConversationState, message: WhatsAppMessage, user: Optional[User]) -> List[Dict[str, Any]]:
+        # If user types something like 'Need 100kg' while we're awaiting confirmation
+        if message.text and not message.button_id:
+            return [{
+                "type": "interactive",
+                "text": "You already have a pending quote preview. Please Confirm or Cancel it first.",
+                "buttons": [
+                    {"id": "btn_confirm_order", "title": "✅ Confirm"},
+                    {"id": "btn_cancel_order", "title": "❌ Cancel"}
+                ]
+            }]
+
+        if message.button_id == "btn_cancel_order":
+            state.state = "READY"
+            state.pending_product = None
+            state.pending_quantity = None
+            state.pending_quote_id = None
+            await db.commit()
+            return [{"type": "text", "text": "Order cancelled."}]
+            
+        if message.button_id == "btn_confirm_order":
+            if not state.pending_quote_id:
+                return await cls._advance_order_state(db, state, user)
+                
+            pricing_service = PricingService()
+            quote_service = QuoteService(pricing_service)
+            outbox_service = OutboxService()
+            
+            try:
+                # This will raise QuoteExpiredError if expired
+                quote = await quote_service.convert_to_order(
+                    db=db,
+                    tenant_id=state.tenant_id,
+                    quote_id=state.pending_quote_id,
+                    outbox_service=outbox_service,
+                    commit=True
+                )
+                
+                state.state = "READY"
+                state.pending_product = None
+                state.pending_quantity = None
+                state.pending_quote_id = None
+                await db.commit()
+                
+                return [{"type": "text", "text": f"🎉 *Order Confirmed!*\nOrder ID: {quote.quote_number}\n{state.pending_quantity}kg {state.pending_product} locked in. 🚛✅"}]
+                
+            except QuoteExpiredError:
+                # Clear quote and regenerate
+                state.pending_quote_id = None
+                await db.commit()
+                
+                msgs = [{"type": "text", "text": "This quotation has expired. Generating latest pricing..."}]
+                msgs.extend(await cls._advance_order_state(db, state, user))
+                return msgs
+                
+            except Exception as e:
+                logger.error(f"Order confirmation failed: {e}")
+                return [{"type": "text", "text": "Failed to confirm order. Please try again."}]
+                
+        return await cls._advance_order_state(db, state, user)
