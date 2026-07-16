@@ -9,7 +9,7 @@ from models.base import Base
 
 class CommunicationLog(Base):
     """Immutable audit ledger and lifecycle tracker for customer communication requests."""
-    __tablename__ = "communication_logs"
+    __tablename__ = "communication_log"
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
     tenant_id: Mapped[uuid.UUID] = mapped_column(nullable=False, index=True)

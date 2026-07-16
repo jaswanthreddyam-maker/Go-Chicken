@@ -53,7 +53,7 @@ class KhataTransaction(Base):
 
 class KhataLedger(Base):
     """Immutable, append-only financial ledger journal entry (PR 7)."""
-    __tablename__ = "khata_ledger"
+    __tablename__ = "khata_ledgers"
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
     tenant_id: Mapped[uuid.UUID] = mapped_column(nullable=False, index=True)
@@ -87,7 +87,7 @@ class KhataLedger(Base):
 
 class CustomerBalanceProjection(Base):
     """Read-optimized customer balance projection deterministically rebuildable from KhataLedger."""
-    __tablename__ = "customer_balance_projection"
+    __tablename__ = "khata_customer_balances"
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
     tenant_id: Mapped[uuid.UUID] = mapped_column(nullable=False, index=True)
