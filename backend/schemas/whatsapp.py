@@ -20,7 +20,7 @@ class WhatsAppProfile(BaseModel):
 
 class WhatsAppContact(BaseModel):
     """Contact info attached to an incoming message."""
-    profile: WhatsAppProfile
+    profile: Optional[WhatsAppProfile] = None
     wa_id: str  # WhatsApp ID (usually the phone number)
 
 
