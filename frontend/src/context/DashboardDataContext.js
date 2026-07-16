@@ -9,7 +9,7 @@ const getApiBase = () => {
   let url = process.env.NEXT_PUBLIC_API_URL;
   if (!url) {
     if (typeof window !== "undefined" && window.location.hostname !== "localhost" && window.location.hostname !== "127.0.0.1") {
-      url = "https://go-chicken-steel.vercel.app/api/v1";
+      url = "https://go-chicken.vercel.app/api/v1";
     } else {
       url = "http://localhost:8000/api/v1";
     }
