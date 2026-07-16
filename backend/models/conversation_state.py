@@ -11,9 +11,9 @@ class ConversationState(Base):
     __tablename__ = "conversation_state"
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
-    user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=False, unique=True)
-    tenant_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False)
-    
+    phone_number: Mapped[str] = mapped_column(String(20), nullable=False, unique=True, index=True)
+    user_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=True, unique=True)
+    tenant_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("tenants.id", ondelete="CASCADE"), nullable=True)
     state: Mapped[str] = mapped_column(String(50), nullable=False, default="IDLE")
     language: Mapped[str | None] = mapped_column(String(10))
     
