@@ -88,8 +88,8 @@ async def root_verify_webhook(request: Request):
 
 @app.post("/whatsapp/webhook")
 @app.post("/whatsapp/webhook/")
-async def root_handle_webhook(payload: WhatsAppWebhookPayload, background_tasks: BackgroundTasks):
-    return await whatsapp.handle_webhook(payload, background_tasks)
+async def root_handle_webhook(request: Request, background_tasks: BackgroundTasks):
+    return await whatsapp.process_webhook(request, background_tasks)
 
 
 # Root alias routes for Google OAuth and Auth in case frontend or direct link is missing /api/v1 prefix
