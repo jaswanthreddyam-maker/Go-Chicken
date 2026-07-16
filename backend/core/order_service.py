@@ -387,7 +387,7 @@ class OrderService:
             # Fetch user name for rich toast
             from models.user import User
             from sqlalchemy import select
-            user = await db.scalar(select(User).where(User.id == order.user_id))
+            user = await db.scalar(select(User).where(User.id == order.retailer_id))
             customer_name = user.name if user else "Retailer"
             
             event_type = f"ORDER_{target_status.upper()}"
