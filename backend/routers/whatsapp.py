@@ -304,8 +304,8 @@ async def _process_conversation_turn(
                     "confidence": confidence,
                     "language": state.language,
                     "customer": user.name if user else "Retailer",
-                    "product": classification.entities.product,
-                    "quantity": float(classification.entities.quantity) if classification.entities.quantity else None,
+                    "product": classification.item,
+                    "quantity": float(classification.quantity_kg) if classification.quantity_kg else None,
                     "timestamp": datetime.now(timezone.utc).isoformat()
                 })
 
