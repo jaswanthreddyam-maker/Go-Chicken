@@ -40,15 +40,15 @@ def upgrade() -> None:
             processed_at TIMESTAMP WITH TIME ZONE,
             created_at TIMESTAMP WITH TIME ZONE NOT NULL
         );
-        CREATE INDEX ix_integration_outbox_event_id ON integration_outbox (event_id);
-        CREATE INDEX ix_integration_outbox_tenant_id ON integration_outbox (tenant_id);
-        CREATE INDEX ix_integration_outbox_event_type ON integration_outbox (event_type);
-        CREATE INDEX ix_integration_outbox_aggregate_id ON integration_outbox (aggregate_id);
-        CREATE INDEX ix_integration_outbox_correlation_id ON integration_outbox (correlation_id);
-        CREATE INDEX ix_integration_outbox_status ON integration_outbox (status);
-        CREATE INDEX ix_outbox_status_created ON integration_outbox (status, created_at);
-        CREATE INDEX ix_outbox_tenant_status_retry ON integration_outbox (tenant_id, status, next_retry_at);
     """)
+    op.execute("CREATE INDEX ix_integration_outbox_event_id ON integration_outbox (event_id);")
+    op.execute("CREATE INDEX ix_integration_outbox_tenant_id ON integration_outbox (tenant_id);")
+    op.execute("CREATE INDEX ix_integration_outbox_event_type ON integration_outbox (event_type);")
+    op.execute("CREATE INDEX ix_integration_outbox_aggregate_id ON integration_outbox (aggregate_id);")
+    op.execute("CREATE INDEX ix_integration_outbox_correlation_id ON integration_outbox (correlation_id);")
+    op.execute("CREATE INDEX ix_integration_outbox_status ON integration_outbox (status);")
+    op.execute("CREATE INDEX ix_outbox_status_created ON integration_outbox (status, created_at);")
+    op.execute("CREATE INDEX ix_outbox_tenant_status_retry ON integration_outbox (tenant_id, status, next_retry_at);")
 
 
 def downgrade() -> None:
