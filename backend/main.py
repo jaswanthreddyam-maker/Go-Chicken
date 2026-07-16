@@ -38,6 +38,7 @@ app.add_middleware(
         "https://go-chicken.vercel.app",
         "https://go-chicken-steel.vercel.app"
     ],
+    allow_origin_regex=r"https://.*\.vercel\.app",
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE"],
     allow_headers=["Authorization", "Content-Type", "X-Tenant-ID"],
