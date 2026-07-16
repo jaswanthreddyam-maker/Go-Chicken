@@ -44,7 +44,8 @@ export const RetailersTab = () => {
     try {
       const token = localStorage.getItem('gc_user');
       
-      const pendingRes = await fetch('/api/v1/retailers/pending', {
+      const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000/api/v1";
+      const pendingRes = await fetch(`${API_URL}/retailers/pending`, {
         headers: { 'Authorization': `Bearer ${token}` }
       });
       
@@ -87,7 +88,8 @@ export const RetailersTab = () => {
     setIsExpired(false);
     try {
       const token = localStorage.getItem('gc_user');
-      const res = await fetch('/api/v1/retailers/invite', {
+      const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000/api/v1";
+      const res = await fetch(`${API_URL}/retailers/invite`, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${token}`
@@ -117,7 +119,8 @@ export const RetailersTab = () => {
   const handleApprove = async (retailerId) => {
     try {
       const token = localStorage.getItem('gc_user');
-      const res = await fetch(`/api/v1/retailers/${retailerId}/approve`, {
+      const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000/api/v1";
+      const res = await fetch(`${API_URL}/retailers/${retailerId}/approve`, {
         method: 'PUT',
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -141,7 +144,8 @@ export const RetailersTab = () => {
   const handleReject = async (retailerId) => {
     try {
       const token = localStorage.getItem('gc_user');
-      const res = await fetch(`/api/v1/retailers/${retailerId}/reject`, {
+      const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000/api/v1";
+      const res = await fetch(`${API_URL}/retailers/${retailerId}/reject`, {
         method: 'POST',
         headers: { 'Authorization': `Bearer ${token}` }
       });

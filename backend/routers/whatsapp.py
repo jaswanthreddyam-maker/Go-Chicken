@@ -208,7 +208,7 @@ async def _process_message(
             result = await db.execute(
                 select(User).where(
                     User.role == UserRole.RETAILER,
-                    (User.phone_number == sender_phone) | (User.whatsapp_id == sender_phone)
+                    (User.phone == sender_phone) | (User.whatsapp_id == sender_phone)
                 )
             )
             user = result.scalars().first()
