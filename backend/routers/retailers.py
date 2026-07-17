@@ -178,6 +178,13 @@ async def approve_retailer(
             if book:
                 pass # Typically would link price book to user profile here. For now assumed attached.
                 
+        # 4. Reset Conversation State to READY
+        from models.communication import ConversationState
+        state_res = await db.execute(select(ConversationState).where(ConversationState.phone_number == user.phone))
+        conv_state = state_res.scalar_one_or_none()
+        if conv_state:
+            conv_state.state = "READY"
+
         await db.commit()
         await db.refresh(user)
         
@@ -242,6 +249,14 @@ async def reject_retailer(
         
     try:
         user.onboarding_status = "REJECTED"
+        
+        # Reset Conversation State to READY
+        from models.communication import ConversationState
+        state_res = await db.execute(select(ConversationState).where(ConversationState.phone_number == user.phone))
+        conv_state = state_res.scalar_one_or_none()
+        if conv_state:
+            conv_state.state = "READY"
+            
         await db.commit()
         
         reject_msg = (
