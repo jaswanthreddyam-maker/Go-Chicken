@@ -1,27 +1,18 @@
 "use client";
 import React from 'react';
 import { motion } from 'framer-motion';
+import Image from 'next/image';
 
 export default function Hero() {
   return (
     <section id="hero" className="min-h-screen flex flex-col items-center justify-center text-center px-4 relative overflow-hidden bg-[#FAFAFA]">
-      <motion.div
-        initial={{ opacity: 0, scale: 0.95 }}
-        animate={{ opacity: 1, scale: 1 }}
-        transition={{ duration: 1, ease: "easeOut" }}
-        className="w-16 h-16 mb-8"
-      >
-        <img src="/logo.png" alt="Go Chicken Logo" className="w-full h-full object-contain" />
-      </motion.div>
+      <div className="w-16 h-16 mb-8 relative">
+        <Image src="/logo.png" alt="Go Chicken Logo" fill className="object-contain" priority />
+      </div>
 
-      <motion.h1 
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.8, delay: 0.2 }}
-        className="text-6xl md:text-8xl font-black tracking-tighter text-[#111111] uppercase mb-4"
-      >
+      <h1 className="text-6xl md:text-8xl font-black tracking-tighter text-[#111111] uppercase mb-4">
         Go Chicken
-      </motion.h1>
+      </h1>
 
       <motion.p 
         initial={{ opacity: 0, y: 20 }}

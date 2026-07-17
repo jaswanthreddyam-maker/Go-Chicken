@@ -4,17 +4,21 @@ import { ChevronLeft } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import Head from 'next/head';
 
-// Import Sections
+import dynamic from 'next/dynamic';
+
+// Import Hero statically (above the fold)
 import Hero from '@/components/docs/Hero';
-import Problem from '@/components/docs/Problem';
-import StoryTimeline from '@/components/docs/StoryTimeline';
-import WhyWhatsapp from '@/components/docs/WhyWhatsapp';
-import LiveDemo from '@/components/docs/LiveDemo';
-import Architecture from '@/components/docs/Architecture';
-import Enterprise from '@/components/docs/Enterprise';
-import BusinessImpact from '@/components/docs/BusinessImpact';
-import Roadmap from '@/components/docs/Roadmap';
-import Closing from '@/components/docs/Closing';
+
+// Lazy load everything below the fold
+const Problem = dynamic(() => import('@/components/docs/Problem'));
+const StoryTimeline = dynamic(() => import('@/components/docs/StoryTimeline'));
+const WhyWhatsapp = dynamic(() => import('@/components/docs/WhyWhatsapp'));
+const LiveDemo = dynamic(() => import('@/components/docs/LiveDemo'));
+const Architecture = dynamic(() => import('@/components/docs/Architecture'));
+const Enterprise = dynamic(() => import('@/components/docs/Enterprise'));
+const BusinessImpact = dynamic(() => import('@/components/docs/BusinessImpact'));
+const Roadmap = dynamic(() => import('@/components/docs/Roadmap'));
+const Closing = dynamic(() => import('@/components/docs/Closing'));
 
 export default function PresentationPage() {
   const router = useRouter();
