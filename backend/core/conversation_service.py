@@ -46,8 +46,12 @@ class WhatsAppMessage:
 class ConversationService:
     @staticmethod
     async def get_or_create_state(db: AsyncSession, phone_number: str) -> ConversationState:
-        result = await db.execute(select(ConversationState).where(ConversationState.phone_number == phone_number))
-        state = result.scalar_one_or_none()
+        result = await db.execute(
+            select(ConversationState)
+            .where(ConversationState.phone_number == phone_number)
+            .order_by(ConversationState.updated_at.desc())
+        )
+        state = result.scalars().first()
         if not state:
             state = ConversationState(
                 phone_number=phone_number,
@@ -102,11 +106,15 @@ class ConversationService:
             state.state = "READY"
             
             # Find active draft and abandon
-            draft_res = await db.execute(select(RetailerOnboardingDraft).where(
-                RetailerOnboardingDraft.phone_number == message.sender_phone,
-                RetailerOnboardingDraft.status == DraftStatus.IN_PROGRESS
-            ))
-            draft = draft_res.scalar_one_or_none()
+            draft_res = await db.execute(
+                select(RetailerOnboardingDraft)
+                .where(
+                    RetailerOnboardingDraft.phone_number == message.sender_phone,
+                    RetailerOnboardingDraft.status == DraftStatus.IN_PROGRESS
+                )
+                .order_by(RetailerOnboardingDraft.created_at.desc())
+            )
+            draft = draft_res.scalars().first()
             if draft:
                 draft.status = DraftStatus.ABANDONED
                 
@@ -116,11 +124,15 @@ class ConversationService:
         if text_lower == "restart" and state.state.startswith("ONBOARDING"):
             state.state = "ONBOARDING_LANGUAGE"
             # Abandon existing draft
-            draft_res = await db.execute(select(RetailerOnboardingDraft).where(
-                RetailerOnboardingDraft.phone_number == message.sender_phone,
-                RetailerOnboardingDraft.status == DraftStatus.IN_PROGRESS
-            ))
-            draft = draft_res.scalar_one_or_none()
+            draft_res = await db.execute(
+                select(RetailerOnboardingDraft)
+                .where(
+                    RetailerOnboardingDraft.phone_number == message.sender_phone,
+                    RetailerOnboardingDraft.status == DraftStatus.IN_PROGRESS
+                )
+                .order_by(RetailerOnboardingDraft.created_at.desc())
+            )
+            draft = draft_res.scalars().first()
             if draft:
                 draft.status = DraftStatus.ABANDONED
             
@@ -151,11 +163,15 @@ class ConversationService:
         if not state.state.startswith("ONBOARDING"):
             return None
             
-        draft_res = await db.execute(select(RetailerOnboardingDraft).where(
-            RetailerOnboardingDraft.phone_number == state.phone_number,
-            RetailerOnboardingDraft.status == DraftStatus.IN_PROGRESS
-        ))
-        draft = draft_res.scalar_one_or_none()
+        draft_res = await db.execute(
+            select(RetailerOnboardingDraft)
+            .where(
+                RetailerOnboardingDraft.phone_number == state.phone_number,
+                RetailerOnboardingDraft.status == DraftStatus.IN_PROGRESS
+            )
+            .order_by(RetailerOnboardingDraft.created_at.desc())
+        )
+        draft = draft_res.scalars().first()
         
         if draft:
             # 24 hour check
@@ -252,11 +268,15 @@ class ConversationService:
 
     @classmethod
     async def _get_active_draft(cls, db: AsyncSession, phone: str) -> RetailerOnboardingDraft:
-        draft_res = await db.execute(select(RetailerOnboardingDraft).where(
-            RetailerOnboardingDraft.phone_number == phone,
-            RetailerOnboardingDraft.status == DraftStatus.IN_PROGRESS
-        ))
-        return draft_res.scalar_one_or_none()
+        draft_res = await db.execute(
+            select(RetailerOnboardingDraft)
+            .where(
+                RetailerOnboardingDraft.phone_number == phone,
+                RetailerOnboardingDraft.status == DraftStatus.IN_PROGRESS
+            )
+            .order_by(RetailerOnboardingDraft.created_at.desc())
+        )
+        return draft_res.scalars().first()
 
     @classmethod
     async def _handle_onboarding_language(cls, db: AsyncSession, state: ConversationState, message: WhatsAppMessage, user: Optional[User]) -> List[Dict[str, Any]]:
