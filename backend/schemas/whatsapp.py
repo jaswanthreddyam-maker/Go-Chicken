@@ -32,6 +32,7 @@ class WhatsAppMessage(BaseModel):
     type: str                               # "text", "image", "interactive", etc.
     text: Optional[dict] = None             # {"body": "50kg live bird"}
     interactive: Optional[dict] = None      # {"type": "button_reply", "button_reply": {"id": "...", "title": "..."}}
+    location: Optional[dict] = None         # {"latitude": 17.123, "longitude": 78.123, ...}
 
 
 class WhatsAppStatus(BaseModel):
