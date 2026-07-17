@@ -508,12 +508,12 @@ class ConversationService:
         if not product_name:
             return None
         norm = product_name.lower()
-        if any(x in norm for x in ["live", "broiler", "lb"]):
-            return "Live Bird"
-        elif any(x in norm for x in ["dress", "with skin"]):
-            return "Dressed"
-        elif any(x in norm for x in ["skinless", "without skin"]):
-            return "Skinless"
+        if any(x in norm for x in ["live", "broiler", "lb", "live bird"]):
+            return "BROILER"
+        elif any(x in norm for x in ["dress", "desi"]):
+            return "DESI"
+        elif any(x in norm for x in ["skinless", "layer", "layer bird"]):
+            return "LAYER"
         return product_name
 
     @classmethod
@@ -530,7 +530,7 @@ class ConversationService:
             return await cls._advance_order_state(db, state, user)
             
         elif intent == "PRICE_INQUIRY":
-            return [{"type": "text", "text": "🐔 Live Bird: ₹180/kg\n🍗 Dressed: ₹250/kg\n🥩 Skinless: ₹320/kg"}]
+            return [{"type": "text", "text": "🐔 BROILER: ₹155/kg\n🍗 DESI: ₹210/kg\n🥩 LAYER: ₹130/kg"}]
         elif intent == "GREETING":
             return cls._build_recovery_menu()
         elif intent == "KHATA":
@@ -547,9 +547,9 @@ class ConversationService:
                 "type": "interactive", 
                 "text": "Which product would you like to order?", 
                 "buttons": [
-                    {"id": "prod_live", "title": "🐔 Live Bird"},
-                    {"id": "prod_dressed", "title": "🍗 Dressed"},
-                    {"id": "prod_skinless", "title": "🥩 Skinless"}
+                    {"id": "prod_broiler", "title": "🐔 BROILER"},
+                    {"id": "prod_desi", "title": "🍗 DESI"},
+                    {"id": "prod_layer", "title": "🥩 LAYER"}
                 ]
             }]
             
@@ -612,7 +612,7 @@ class ConversationService:
             if classification and classification.quantity_kg and classification.quantity_kg > 0:
                 state.pending_quantity = Decimal(str(classification.quantity_kg))
         else:
-            prod_map = {"prod_live": "Live Bird", "prod_dressed": "Dressed", "prod_skinless": "Skinless"}
+            prod_map = {"prod_broiler": "BROILER", "prod_desi": "DESI", "prod_layer": "LAYER"}
             if message.button_id in prod_map:
                 state.pending_product = prod_map[message.button_id]
 
@@ -621,9 +621,9 @@ class ConversationService:
                 "type": "interactive", 
                 "text": "Please choose a product:", 
                 "buttons": [
-                    {"id": "prod_live", "title": "🐔 Live Bird"},
-                    {"id": "prod_dressed", "title": "🍗 Dressed"},
-                    {"id": "prod_skinless", "title": "🥩 Skinless"}
+                    {"id": "prod_broiler", "title": "🐔 BROILER"},
+                    {"id": "prod_desi", "title": "🍗 DESI"},
+                    {"id": "prod_layer", "title": "🥩 LAYER"}
                 ]
             }]
             
