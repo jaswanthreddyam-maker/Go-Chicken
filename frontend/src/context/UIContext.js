@@ -29,8 +29,19 @@ export function UIProvider({ children }) {
   const handleTabChange = useCallback((tabId) => {
     setActiveTab(tabId);
     if (typeof window !== 'undefined') {
-      const newPath = tabId === 'overview' ? '/dashboard' : `/dashboard/${tabId}`;
+      const newPath = tabId === 'overview' ? '/dashboard' : `/dashboard?tab=${tabId}`;
       window.history.pushState(null, '', newPath);
+    }
+  }, []);
+
+  // Parse initial tab from URL
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const params = new URLSearchParams(window.location.search);
+      const tab = params.get('tab');
+      if (tab) {
+        setActiveTab(tab);
+      }
     }
   }, []);
 
