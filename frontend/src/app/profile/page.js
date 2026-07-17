@@ -113,8 +113,8 @@ export default function ProfileSettings() {
   };
 
   // Local state for the settings
-  const [basePrice, setBasePrice] = useState(135);
-  const [creditLimit, setCreditLimit] = useState(100000);
+  const [basePrice, setBasePrice] = useState('');
+  const [creditLimit, setCreditLimit] = useState('');
   const [iotAlerts, setIotAlerts] = useState(true);
   const [khataAlerts, setKhataAlerts] = useState(true);
   const { language: globalLanguage, setLanguage: setGlobalLanguage, t } = useLanguage();
@@ -123,12 +123,12 @@ export default function ProfileSettings() {
   const [isLoading, setIsLoading] = useState(true);
 
   // Profile details state
-  const [businessName, setBusinessName] = useState('Jagan Supplies');
-  const [role, setRole] = useState('Super Admin');
-  const [adminName, setAdminName] = useState('Jagan Mohan');
-  const [contactNumber, setContactNumber] = useState('+91 98765 43210');
-  const [gstin, setGstin] = useState('37AAACJ1234A1Z5');
-  const [hubLocation, setHubLocation] = useState('Vijayawada Hub');
+  const [businessName, setBusinessName] = useState('');
+  const [role, setRole] = useState('Admin');
+  const [adminName, setAdminName] = useState('');
+  const [contactNumber, setContactNumber] = useState('');
+  const [gstin, setGstin] = useState('');
+  const [hubLocation, setHubLocation] = useState('');
 
   // Avatar upload state
   const [profilePicUrl, setProfilePicUrl] = useState(null);
