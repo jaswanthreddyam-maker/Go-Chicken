@@ -159,12 +159,17 @@ async def approve_retailer(
         
         # 2. Create Khata Ledger Projection
         from models.khata import CustomerBalanceProjection
-        khata = CustomerBalanceProjection(
-            tenant_id=user.tenant_id,
-            customer_id=user.id,
-            outstanding_balance=0
-        )
-        db.add(khata)
+        existing_khata = await db.execute(select(CustomerBalanceProjection).where(
+            CustomerBalanceProjection.tenant_id == user.tenant_id,
+            CustomerBalanceProjection.customer_id == user.id
+        ))
+        if not existing_khata.scalar_one_or_none():
+            khata = CustomerBalanceProjection(
+                tenant_id=user.tenant_id,
+                customer_id=user.id,
+                outstanding_balance=0
+            )
+            db.add(khata)
         
         # 3. Assign Default Price Book (Mocked logic if no book passed)
         if not req.price_book_id:
@@ -199,8 +204,14 @@ async def approve_retailer(
         from core.config import get_settings
         settings = get_settings()
         if settings.WHATSAPP_API_TOKEN:
-             # Just a fire and forget for hackathon demo. Need real phone_number_id from DB or config.
-             pass # Or realistically, broadcast an event and let a worker handle it.
+             import asyncio
+             # Send the welcome message asynchronously
+             phone_number_id = settings.WHATSAPP_PHONE_NUMBER_ID or "your-phone-id"
+             asyncio.create_task(_send_whatsapp_reply(
+                 phone_number_id=phone_number_id,
+                 to=user.phone,
+                 message=welcome_msg
+             ))
         
         # We will mock the WhatsApp API call here for the hackathon UI
         # We can just broadcast the event so the UI knows.
