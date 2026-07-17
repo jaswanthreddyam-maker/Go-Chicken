@@ -465,10 +465,29 @@ export function DashboardDataProvider({ children }) {
       fetchAll(true);
     } catch (err) {
       setTrucks(previousTrucks);
-      const { type, message } = classifyError(err, response);
-      addToast(message, type);
+      const errorState = classifyError(err, response);
+      addToast(errorState.message, errorState.type);
+      fetchAll(true);
     }
   }, [trucks, addToast, addNotification, classifyError, fetchAll]);
+
+  const handleDeleteTruck = useCallback(async (truckId) => {
+    const previousTrucks = [...trucks];
+    setTrucks(prev => prev.filter(t => t.id !== truckId));
+    let response;
+    try {
+      response = await fetch(`${API_BASE}/trucks/${truckId}`, {
+        method: 'DELETE',
+        headers: getAuthHeaders()
+      });
+      if (!response.ok) throw new Error('Failed to delete truck');
+      addToast('🚛 Truck deleted from fleet', 'info');
+    } catch (err) {
+      setTrucks(previousTrucks);
+      const errorState = classifyError(err, response);
+      addToast(errorState.message, errorState.type);
+    }
+  }, [trucks, addToast, classifyError]);
 
   const createQuote = useCallback(async ({ customer_id, delivery_zone, items }) => {
     let response;
@@ -604,6 +623,7 @@ export function DashboardDataProvider({ children }) {
         handleUpdateRate,
         handlePaymentSubmit,
         handleAddTruck,
+        handleDeleteTruck,
         createQuote,
         convertQuote,
         approveQuote,

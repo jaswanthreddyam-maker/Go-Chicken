@@ -65,6 +65,7 @@ function GoChickenDashboard() {
     handleUpdateRate,
     handlePaymentSubmit,
     handleAddTruck,
+    handleDeleteTruck,
     livePulse,
     eventCount
   } = useDashboardData();
@@ -459,10 +460,11 @@ function GoChickenDashboard() {
                     label: "Action",
                     align: "center",
                     render: (_, row) => (
-                      <Button
-                        variant="destructive"
-                        size="sm"
-                        onClick={() => setTrucks(prev => prev.filter(t => t.id !== row.id))}
+                      <Button 
+                        variant="ghost" 
+                        size="sm" 
+                        className="text-[#FF3B30] hover:text-[#FF3B30]/80 hover:bg-[#FF3B30]/10"
+                        onClick={() => handleDeleteTruck(row.id)}
                       >
                         Delete
                       </Button>
@@ -540,9 +542,17 @@ function GoChickenDashboard() {
           <Form onSubmit={(e) => {
             e.preventDefault();
             const formData = new FormData(e.target);
+            const plate = formData.get("plate");
+            const capacity = formData.get("capacity");
+            
+            if (!plate || !capacity) {
+              addToast('Please fill in all required fields.', 'error');
+              return;
+            }
+
             handleAddTruck({
-              license_plate: formData.get("plate"),
-              max_capacity_kg: Number(formData.get("capacity")),
+              license_plate: plate,
+              max_capacity_kg: Number(capacity),
               iot_device_id: formData.get("deviceId")
             });
             setShowAddTruckModal(false);
