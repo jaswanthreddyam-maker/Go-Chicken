@@ -63,6 +63,12 @@ class ConversationService:
     async def process(cls, db: AsyncSession, message: WhatsAppMessage, user: Optional[User] = None) -> List[Dict[str, Any]]:
         state = await cls.get_or_create_state(db, message.sender_phone)
         
+        # Sync user and tenant IDs if user exists
+        if user and (state.user_id != user.id or state.tenant_id != user.tenant_id):
+            state.user_id = user.id
+            state.tenant_id = user.tenant_id
+            await db.commit()
+        
         # 1. Global Interrupt Layer
         emergency_action = await cls._handle_emergency(db, state, message)
         if emergency_action:
