@@ -231,7 +231,7 @@ const Navbar = ({ isLoggedIn, onGetStarted }) => {
             <a href="#pricing" className="text-xs font-bold uppercase tracking-wider text-[#666666] hover:text-[#111111] transition-colors">
               Pricing
             </a>
-            <a href="#docs" className="text-xs font-bold uppercase tracking-wider text-[#666666] hover:text-[#111111] transition-colors">
+            <a href="/Go-Chicken-Pitch-Deck.pdf" target="_blank" rel="noopener noreferrer" className="text-xs font-bold uppercase tracking-wider text-[#666666] hover:text-[#111111] transition-colors">
               Docs
             </a>
           </div>
@@ -281,7 +281,7 @@ const Navbar = ({ isLoggedIn, onGetStarted }) => {
             <a href="#platform" className="block text-xs font-bold uppercase tracking-wider text-[#666666] py-2">Platform</a>
             <a href="#solutions" className="block text-xs font-bold uppercase tracking-wider text-[#666666] py-2">Solutions</a>
             <a href="#pricing" className="block text-xs font-bold uppercase tracking-wider text-[#666666] py-2">Pricing</a>
-            <a href="#docs" className="block text-xs font-bold uppercase tracking-wider text-[#666666] py-2">Docs</a>
+            <a href="/Go-Chicken-Pitch-Deck.pdf" target="_blank" rel="noopener noreferrer" className="block text-xs font-bold uppercase tracking-wider text-[#666666] py-2">Docs</a>
             <div className="border-t border-[#EBEBEB] pt-3 space-y-2">
               {isLoggedIn ? (
                 <button
