@@ -478,7 +478,7 @@ export function DashboardDataProvider({ children }) {
     try {
       response = await fetch(`${API_BASE}/trucks/${truckId}`, {
         method: 'DELETE',
-        headers: getAuthHeaders()
+        credentials: 'include'
       });
       if (!response.ok) throw new Error('Failed to delete truck');
       addToast('🚛 Truck deleted from fleet', 'info');
