@@ -581,7 +581,7 @@ export default function LandingPage() {
               <img
                 src="/hero-graphic.png"
                 alt="Go Chicken platform — logistics and data dashboard"
-                className="w-full h-auto max-w-[540px] object-contain rounded-2xl animate-float"
+                className="w-full h-auto max-w-[540px] object-contain rounded-2xl animate-float mix-blend-multiply"
               />
             </div>
 
@@ -597,7 +597,7 @@ export default function LandingPage() {
                 <img
                   src="/hero-graphic.png"
                   alt="Go Chicken platform — logistics and data dashboard"
-                  className="w-full h-auto object-contain rounded-2xl"
+                  className="w-full h-auto object-contain rounded-2xl mix-blend-multiply"
                 />
               </div>
             </div>
