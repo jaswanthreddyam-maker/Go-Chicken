@@ -6,6 +6,7 @@ from typing import List
 from fastapi import APIRouter, Depends, HTTPException, status, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
+from sqlalchemy.orm import selectinload
 
 from core.database import get_db
 from core.auth import get_current_tenant
@@ -67,11 +68,10 @@ async def create_quote(
             commit=True
         )
         
-        # Load items eagerly for response model
-        stmt_items = select(QuoteItem).where(QuoteItem.quote_id == quote.id)
-        res_items = await db.execute(stmt_items)
-        quote.items = res_items.scalars().all()
-        return quote
+        # Eager load items via refresh is not necessary since they are added to session, but to return consistent schema we can retrieve it
+        stmt = select(Quote).options(selectinload(Quote.items)).where(Quote.id == quote.id)
+        res = await db.execute(stmt)
+        return res.scalars().first()
     except QuoteExpiredError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
@@ -174,15 +174,9 @@ async def get_quotes(
 ):
     """Retrieve all quote snapshots for the active tenant."""
     t_id = tenant_id if isinstance(tenant_id, uuid.UUID) else uuid.UUID(str(tenant_id))
-    stmt = select(Quote).where(Quote.tenant_id == t_id).order_by(Quote.created_at.desc())
+    stmt = select(Quote).options(selectinload(Quote.items)).where(Quote.tenant_id == t_id).order_by(Quote.created_at.desc())
     res = await db.execute(stmt)
     quotes = res.scalars().all()
-
-    # Load items for each quote
-    for q in quotes:
-        stmt_items = select(QuoteItem).where(QuoteItem.quote_id == q.id)
-        res_items = await db.execute(stmt_items)
-        q.items = res_items.scalars().all()
     
     return quotes
 
@@ -195,15 +189,12 @@ async def get_quote(
 ):
     """Fetch a single detailed quote snapshot by ID."""
     t_id = uuid.UUID(tenant_id)
-    stmt = select(Quote).where(Quote.id == id, Quote.tenant_id == t_id)
+    stmt = select(Quote).options(selectinload(Quote.items)).where(Quote.id == id, Quote.tenant_id == t_id)
     res = await db.execute(stmt)
     quote = res.scalars().first()
     if not quote:
         raise HTTPException(status_code=404, detail="Quote not found")
 
-    stmt_items = select(QuoteItem).where(QuoteItem.quote_id == quote.id)
-    res_items = await db.execute(stmt_items)
-    quote.items = res_items.scalars().all()
     return quote
 
 
@@ -228,11 +219,10 @@ async def approve_quote(
         await db.commit()
         await db.refresh(quote)
         
-        # Load items
-        stmt_items = select(QuoteItem).where(QuoteItem.quote_id == quote.id)
-        res_items = await db.execute(stmt_items)
-        quote.items = res_items.scalars().all()
-        return quote
+        # Refresh with selectinload
+        stmt = select(Quote).options(selectinload(Quote.items)).where(Quote.id == id)
+        res = await db.execute(stmt)
+        return res.scalars().first()
     except InvalidQuoteTransitionError as e:
         await db.rollback()
         raise HTTPException(status_code=400, detail=str(e))
@@ -259,11 +249,9 @@ async def reject_quote(
         await db.commit()
         await db.refresh(quote)
         
-        # Load items
-        stmt_items = select(QuoteItem).where(QuoteItem.quote_id == quote.id)
-        res_items = await db.execute(stmt_items)
-        quote.items = res_items.scalars().all()
-        return quote
+        stmt = select(Quote).options(selectinload(Quote.items)).where(Quote.id == id)
+        res = await db.execute(stmt)
+        return res.scalars().first()
     except InvalidQuoteTransitionError as e:
         await db.rollback()
         raise HTTPException(status_code=400, detail=str(e))
@@ -285,11 +273,9 @@ async def convert_quote(
             outbox_service=outbox_service,
             commit=True
         )
-        
-        stmt_items = select(QuoteItem).where(QuoteItem.quote_id == quote.id)
-        res_items = await db.execute(stmt_items)
-        quote.items = res_items.scalars().all()
-        return quote
+        stmt = select(Quote).options(selectinload(Quote.items)).where(Quote.id == quote.id)
+        res = await db.execute(stmt)
+        return res.scalars().first()
     except KeyError:
         raise HTTPException(status_code=404, detail="Quote not found")
     except (InvalidQuoteTransitionError, QuoteExpiredError) as e:

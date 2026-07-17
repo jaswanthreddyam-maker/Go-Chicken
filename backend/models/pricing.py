@@ -3,8 +3,8 @@
 import uuid
 from datetime import date, datetime, timezone
 from decimal import Decimal
-from sqlalchemy import String, Integer, Numeric, Boolean, Date, DateTime, UniqueConstraint, Index
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy import String, Integer, Numeric, Boolean, Date, DateTime, UniqueConstraint, Index, ForeignKey
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 from models.base import Base
 
 
@@ -126,6 +126,10 @@ class Quote(Base):
         DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc)
     )
 
+    items: Mapped[list["QuoteItem"]] = relationship(
+        "QuoteItem", lazy="selectin"
+    )
+
     __table_args__ = (
         UniqueConstraint("tenant_id", "quote_number", name="uq_quote_tenant_number"),
         Index("ix_quote_tenant_status", "tenant_id", "status"),
@@ -137,7 +141,7 @@ class QuoteItem(Base):
     __tablename__ = "pricing_quote_items"
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
-    quote_id: Mapped[uuid.UUID] = mapped_column(nullable=False, index=True)
+    quote_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("pricing_quotes.id", ondelete="CASCADE"), nullable=False, index=True)
     sku: Mapped[str] = mapped_column(String(64), nullable=False)
     quantity_kg: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False)
     unit_price: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False)

@@ -168,3 +168,29 @@ async def update_truck(
         driver_id=truck.driver_id,
         created_at=truck.created_at.isoformat() if truck.created_at else None,
     )
+
+
+@router.delete("/{truck_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_truck(
+    truck_id: uuid.UUID,
+    tenant_id: uuid.UUID = Depends(get_current_tenant),
+    db: AsyncSession = Depends(get_db),
+):
+    """Delete a truck that belongs to the authenticated tenant."""
+    result = await db.execute(
+        select(Truck).where(
+            Truck.id == truck_id,
+            Truck.tenant_id == tenant_id,  # tenant isolation
+        )
+    )
+    truck = result.scalar_one_or_none()
+    if truck is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Truck not found.",
+        )
+
+    await db.delete(truck)
+    await db.commit()
+
+    logger.info(f"🚛 Deleted truck {truck.id} for tenant {tenant_id}")
