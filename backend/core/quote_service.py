@@ -134,7 +134,9 @@ class QuoteService:
             return quote
 
         now = datetime.now(timezone.utc)
-        if now > quote.expires_at:
+        
+        exp = quote.expires_at.replace(tzinfo=timezone.utc) if quote.expires_at.tzinfo is None else quote.expires_at
+        if now > exp:
             raise QuoteExpiredError(f"Quote {quote.quote_number} expired on {quote.expires_at}")
 
         QuoteStateMachine.validate_transition(quote.status, "CONVERTED")

@@ -49,6 +49,8 @@ async def test_order_service_transition_creates_outbox_entry():
         item_type="BROILER",
         quantity_kg=Decimal("100.00"),
         status="pending",
+        unit_price=Decimal("150.00"),
+        total_amount=Decimal("15000.00"),
     )
 
     from models.inventory import InventoryItem

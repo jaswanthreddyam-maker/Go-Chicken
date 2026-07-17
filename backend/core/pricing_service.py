@@ -90,9 +90,14 @@ class PricingService:
         )
         res_override = await db.execute(stmt_override)
         override = res_override.scalars().first()
-        if override and (override.valid_until is None or override.valid_until >= now):
-            price = self._assert_decimal(override.override_unit_price)
-            return price, "CUSTOMER_OVERRIDE"
+        if override:
+            valid = True
+            if override.valid_until is not None:
+                vu = override.valid_until.replace(tzinfo=timezone.utc) if override.valid_until.tzinfo is None else override.valid_until
+                valid = vu >= now
+            if valid:
+                price = self._assert_decimal(override.override_unit_price)
+                return price, "CUSTOMER_OVERRIDE"
 
         # 2. TIER_PRICEBOOK & BASE_PRICEBOOK
         stmt_pb = (

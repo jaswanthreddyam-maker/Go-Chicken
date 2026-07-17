@@ -41,8 +41,8 @@ def sample_order():
         item_type="BROILER",
         quantity_kg=Decimal("100.00"),
         status="pending",
-        unit_price=None,
-        total_amount=None,
+        unit_price=Decimal("150.00"),
+        total_amount=Decimal("15000.00"),
     )
     return order
 

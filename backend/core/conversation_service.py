@@ -185,8 +185,13 @@ class ConversationService:
         if not invite:
             return [{"type": "text", "text": "This invitation is invalid. Please contact your wholesaler."}]
             
-        if invite.status == InviteStatus.EXPIRED or (invite.expires_at and invite.expires_at < datetime.now(timezone.utc)):
+        if invite.status == InviteStatus.EXPIRED:
             return [{"type": "text", "text": "This invitation has expired. Please ask your wholesaler to generate a new invitation."}]
+            
+        if invite.expires_at:
+            exp = invite.expires_at.replace(tzinfo=timezone.utc) if invite.expires_at.tzinfo is None else invite.expires_at
+            if exp < datetime.now(timezone.utc):
+                return [{"type": "text", "text": "This invitation has expired. Please ask your wholesaler to generate a new invitation."}]
             
         if invite.status == InviteStatus.USED:
             return [{"type": "text", "text": "This invitation has already been used. Contact your wholesaler."}]
