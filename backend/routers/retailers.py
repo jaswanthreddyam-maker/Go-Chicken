@@ -181,7 +181,7 @@ async def approve_retailer(
         # 4. Reset Conversation State to READY
         from models.communication import ConversationState
         state_res = await db.execute(select(ConversationState).where(ConversationState.phone_number == user.phone))
-        conv_state = state_res.scalar_one_or_none()
+        conv_state = state_res.scalars().first()
         if conv_state:
             conv_state.state = "READY"
 
@@ -253,7 +253,7 @@ async def reject_retailer(
         # Reset Conversation State to READY
         from models.communication import ConversationState
         state_res = await db.execute(select(ConversationState).where(ConversationState.phone_number == user.phone))
-        conv_state = state_res.scalar_one_or_none()
+        conv_state = state_res.scalars().first()
         if conv_state:
             conv_state.state = "READY"
             
