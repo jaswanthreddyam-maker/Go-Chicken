@@ -157,12 +157,12 @@ async def approve_retailer(
         user.onboarding_status = "ACTIVE"
         user.zone = req.zone
         
-        # 2. Create Khata Ledger
-        khata = KhataLedger(
+        # 2. Create Khata Ledger Projection
+        from models.khata import CustomerBalanceProjection
+        khata = CustomerBalanceProjection(
             tenant_id=user.tenant_id,
             customer_id=user.id,
-            credit_limit=req.credit_limit,
-            balance=0
+            outstanding_balance=0
         )
         db.add(khata)
         
