@@ -1,6 +1,6 @@
-"use client";
+"use client"
 
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { 
   ChevronLeft, Building2, Settings2, SlidersHorizontal, 
@@ -8,6 +8,54 @@ import {
 } from 'lucide-react';
 import AnimatedButton from '@/components/AnimatedButton';
 import { useLanguage } from '@/context/LanguageContext';
+import { useUI } from '@/context/UIContext';
+
+// ── UTILITIES ──
+
+const getApiBase = () => {
+  let API_BASE = process.env.NEXT_PUBLIC_API_URL;
+  if (!API_BASE) {
+    if (typeof window !== "undefined" && window.location.hostname !== "localhost" && window.location.hostname !== "127.0.0.1") {
+      API_BASE = "https://go-chicken-production.up.railway.app/api/v1";
+    } else {
+      API_BASE = "http://localhost:8000/api/v1";
+    }
+  }
+  API_BASE = API_BASE.replace(/\/+$/, "");
+  if (!API_BASE.endsWith("/api/v1")) API_BASE += "/api/v1";
+  return API_BASE;
+};
+
+// Normalize form state for comparison
+const normalizeForm = (data) => {
+  if (!data) return null;
+  return {
+    base_price_today: data.base_price_today === null || data.base_price_today === '' ? '' : Number(data.base_price_today),
+    default_credit_limit: data.default_credit_limit === null || data.default_credit_limit === '' ? '' : Number(data.default_credit_limit),
+    iot_alerts_enabled: !!data.iot_alerts_enabled,
+    financial_alerts_enabled: !!data.financial_alerts_enabled,
+    app_language: (data.app_language || 'English').trim(),
+    business_name: (data.business_name || '').trim(),
+    role: (data.role || '').trim(),
+    admin_name: (data.admin_name || '').trim(),
+    contact_number: (data.contact_number || '').trim(),
+    gstin: (data.gstin || '').trim(),
+    hub_location: (data.hub_location || '').trim(),
+  };
+};
+
+const isDeepEqual = (obj1, obj2) => {
+  if (!obj1 || !obj2) return obj1 === obj2;
+  const keys1 = Object.keys(obj1);
+  const keys2 = Object.keys(obj2);
+  if (keys1.length !== keys2.length) return false;
+  for (let key of keys1) {
+    if (obj1[key] !== obj2[key]) return false;
+  }
+  return true;
+};
+
+// ── COMPONENTS ──
 
 const SectionCard = ({ icon: Icon, title, children }) => {
   const { t } = useLanguage();
@@ -23,6 +71,21 @@ const SectionCard = ({ icon: Icon, title, children }) => {
     </div>
   );
 };
+
+const ProfileSkeleton = () => (
+  <div className="animate-pulse flex flex-col gap-8 mt-2 max-w-3xl mx-auto p-4">
+    {[1, 2, 3].map(i => (
+      <div key={i} className="bg-white border border-[#EBEBEB] rounded-lg overflow-hidden">
+        <div className="h-10 bg-[#FAFAFA] border-b border-[#EBEBEB]"></div>
+        <div className="p-4 flex flex-col gap-4">
+          <div className="h-8 bg-gray-200 rounded w-1/3"></div>
+          <div className="h-10 bg-gray-100 rounded w-full"></div>
+          <div className="h-10 bg-gray-100 rounded w-full"></div>
+        </div>
+      </div>
+    ))}
+  </div>
+);
 
 const AvatarUpload = ({ fileInputRef, handleFileChange, handleAvatarClick, isUploading, profilePicUrl, businessName }) => (
   <>
@@ -97,84 +160,112 @@ const AvatarUpload = ({ fileInputRef, handleFileChange, handleAvatarClick, isUpl
 
 export default function ProfileSettings() {
   const router = useRouter();
-
-  const getApiBase = () => {
-    let API_BASE = process.env.NEXT_PUBLIC_API_URL;
-    if (!API_BASE) {
-      if (typeof window !== "undefined" && window.location.hostname !== "localhost" && window.location.hostname !== "127.0.0.1") {
-        API_BASE = "https://go-chicken-production.up.railway.app/api/v1";
-      } else {
-        API_BASE = "http://localhost:8000/api/v1";
-      }
-    }
-    API_BASE = API_BASE.replace(/\/+$/, "");
-    if (!API_BASE.endsWith("/api/v1")) API_BASE += "/api/v1";
-    return API_BASE;
-  };
-
-  // Local state for the settings
-  const [basePrice, setBasePrice] = useState('');
-  const [creditLimit, setCreditLimit] = useState('');
-  const [iotAlerts, setIotAlerts] = useState(true);
-  const [khataAlerts, setKhataAlerts] = useState(true);
   const { language: globalLanguage, setLanguage: setGlobalLanguage, t } = useLanguage();
-  const [language, setLanguage] = useState('English');
-  const [isSaving, setIsSaving] = useState(false);
-  const [isLoading, setIsLoading] = useState(true);
+  const { addToast } = useUI();
 
-  // Profile details state
-  const [businessName, setBusinessName] = useState('');
-  const [role, setRole] = useState('Admin');
-  const [adminName, setAdminName] = useState('');
-  const [contactNumber, setContactNumber] = useState('');
-  const [gstin, setGstin] = useState('');
-  const [hubLocation, setHubLocation] = useState('');
+  // ── STATE MACHINES ──
+  // Page Lifecycle: 'loading' | 'ready' | 'unauthorized' | 'fatal_error'
+  const [pageState, setPageState] = useState('loading');
+  
+  // Save Lifecycle: 'idle' | 'saving' | 'saved' | 'save_error'
+  // Note: 'dirty' is a derived state.
+  const [saveLifecycle, setSaveLifecycle] = useState('idle');
 
-  // Avatar upload state
+  // ── DATA STATE ──
+  const [originalForm, setOriginalForm] = useState(null);
+  const [currentForm, setCurrentForm] = useState(null);
+  
+  // Avatar is separate from the form state because it's an immediate action.
   const [profilePicUrl, setProfilePicUrl] = useState(null);
-  const [isUploading, setIsUploading] = useState(false);
+  const [isAvatarUploading, setIsAvatarUploading] = useState(false);
   const fileInputRef = useRef(null);
+  const saveTimeoutRef = useRef(null);
 
-  React.useEffect(() => {
-    async function fetchProfile() {
-      const token = localStorage.getItem('gc_user');
-      if (!token) {
-        router.replace('/landing');
+  // ── DERIVED STATE ──
+  const isDirty = useMemo(() => {
+    if (!originalForm || !currentForm) return false;
+    return !isDeepEqual(originalForm, currentForm);
+  }, [originalForm, currentForm]);
+
+  // ── FETCH HELPER (Handles 401 globally) ──
+  const fetchWithAuth = useCallback(async (url, options = {}) => {
+    options.credentials = "include";
+    try {
+      const response = await fetch(url, options);
+      if (response.status === 401) {
+        setPageState('unauthorized');
+        localStorage.removeItem('gc_user');
+        sessionStorage.clear();
+        router.replace('/login');
+        return { error: 'unauthorized', response: null };
+      }
+      return { error: null, response };
+    } catch (err) {
+      return { error: 'network_error', response: null };
+    }
+  }, [router]);
+
+  // ── LOAD PROFILE ──
+  useEffect(() => {
+    let isMounted = true;
+    async function loadProfile() {
+      setPageState('loading');
+      
+      const { error, response } = await fetchWithAuth(`${getApiBase()}/profile`);
+      
+      if (!isMounted) return;
+
+      if (error === 'unauthorized') {
+        return; // Handled by fetchWithAuth
+      }
+      if (error || !response.ok) {
+        setPageState('fatal_error');
         return;
       }
+
       try {
-        const res = await fetch(`${getApiBase()}/profile`, {
-          credentials: "include"
-        });
-        if (res.ok) {
-          const data = await res.json();
-          if (data.base_price_today !== null) setBasePrice(Number(data.base_price_today));
-          if (data.default_credit_limit !== null) setCreditLimit(Number(data.default_credit_limit));
-          if (data.iot_alerts_enabled !== null) setIotAlerts(data.iot_alerts_enabled);
-          if (data.financial_alerts_enabled !== null) setKhataAlerts(data.financial_alerts_enabled);
-          if (data.app_language !== null) {
-            setLanguage(data.app_language);
-            setGlobalLanguage(data.app_language);
-          }
-          if (data.business_name !== null) setBusinessName(data.business_name);
-          if (data.role !== null) setRole(data.role);
-          if (data.admin_name !== null) setAdminName(data.admin_name);
-          if (data.contact_number !== null) setContactNumber(data.contact_number);
-          if (data.gstin !== null) setGstin(data.gstin);
-          if (data.hub_location !== null) setHubLocation(data.hub_location);
-          if (data.profile_pic_url) setProfilePicUrl(data.profile_pic_url);
-        }
+        const data = await response.json();
+        const normalized = normalizeForm(data);
+        setOriginalForm(normalized);
+        setCurrentForm(normalized);
+        setProfilePicUrl(data.profile_pic_url || null);
+        setPageState('ready');
       } catch (err) {
-        console.error('Failed to fetch profile', err);
-      } finally {
-        setIsLoading(false);
+        setPageState('fatal_error');
       }
     }
-    fetchProfile();
-  }, []);
+    loadProfile();
+    return () => { 
+      isMounted = false;
+      if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
+    };
+  }, [fetchWithAuth]);
+
+  // ── UNSAVED CHANGES WARNING ──
+  useEffect(() => {
+    const handleBeforeUnload = (e) => {
+      if (isDirty) {
+        e.preventDefault();
+        e.returnValue = '';
+      }
+    };
+    if (isDirty) {
+      window.addEventListener('beforeunload', handleBeforeUnload);
+    }
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+  }, [isDirty]);
+
+  // ── HANDLERS ──
+  const updateField = (field, value) => {
+    setCurrentForm(prev => {
+      if (!prev) return prev;
+      return { ...prev, [field]: value };
+    });
+    setSaveLifecycle('idle'); // Reset saved state if they edit again
+  };
 
   const handleAvatarClick = () => {
-    if (!isUploading) {
+    if (!isAvatarUploading) {
       fileInputRef.current?.click();
     }
   };
@@ -183,94 +274,107 @@ export default function ProfileSettings() {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    // Validate client-side before uploading
+    // Validate
     const allowedTypes = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
     if (!allowedTypes.includes(file.type)) {
-      alert('Please select a valid image file (JPEG, PNG, WebP, or GIF).');
+      addToast('Please select a valid image file (JPEG, PNG, WebP, GIF).', 'error');
       return;
     }
     if (file.size > 5 * 1024 * 1024) {
-      alert('Image must be under 5 MB.');
+      addToast('Image must be under 5 MB.', 'error');
       return;
     }
 
-    setIsUploading(true);
-    try {
-      const formData = new FormData();
-      formData.append('file', file);
+    setIsAvatarUploading(true);
+    const formData = new FormData();
+    formData.append('file', file);
 
-      const token = localStorage.getItem('gc_user');
-      const res = await fetch(`${getApiBase()}/profile/upload_avatar`, {
-        method: 'POST',
-        credentials: "include",
-        body: formData,
-      });
+    const { error, response } = await fetchWithAuth(`${getApiBase()}/profile/upload_avatar`, {
+      method: 'POST',
+      body: formData,
+    });
 
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({}));
-        throw new Error(err.detail || 'Upload failed');
-      }
+    setIsAvatarUploading(false);
+    if (fileInputRef.current) fileInputRef.current.value = '';
 
-      const data = await res.json();
+    if (error === 'unauthorized') return;
+    
+    if (error || !response.ok) {
+      addToast('Failed to upload profile picture.', 'error');
+    } else {
+      const data = await response.json();
       if (data.profile_pic_url) {
         setProfilePicUrl(data.profile_pic_url);
+        addToast('Avatar updated successfully!', 'success');
       }
-    } catch (err) {
-      console.error('Avatar upload error:', err);
-      alert(err.message || 'Failed to upload profile picture.');
-    } finally {
-      setIsUploading(false);
-      // Reset the input so the same file can be re-selected
-      if (fileInputRef.current) fileInputRef.current.value = '';
     }
   };
 
   const handleSave = async () => {
-    setIsSaving(true);
-    try {
-      const payload = {
-        base_price_today: basePrice,
-        default_credit_limit: creditLimit,
-        iot_alerts_enabled: iotAlerts,
-        financial_alerts_enabled: khataAlerts,
-        app_language: language,
-        business_name: businessName,
-        role: role,
-        admin_name: adminName,
-        contact_number: contactNumber,
-        gstin: gstin,
-        hub_location: hubLocation,
-      };
-      const token = localStorage.getItem('gc_user');
-      const res = await fetch(`${getApiBase()}/profile`, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        credentials: "include",
-        body: JSON.stringify(payload)
-      });
-      if (!res.ok) {
-        throw new Error('Failed to update profile');
-      }
-      setGlobalLanguage(language);
-      alert('Trade Settings Saved Successfully!');
-    } catch (err) {
-      console.error(err);
-      alert('Failed to save settings.');
-    } finally {
-      setIsSaving(false);
+    if (!isDirty) return;
+    
+    setSaveLifecycle('saving');
+    
+    // Safety check - construct payload explicitly from currentForm
+    const payload = {
+      base_price_today: currentForm.base_price_today === '' ? null : currentForm.base_price_today,
+      default_credit_limit: currentForm.default_credit_limit === '' ? null : currentForm.default_credit_limit,
+      iot_alerts_enabled: currentForm.iot_alerts_enabled,
+      financial_alerts_enabled: currentForm.financial_alerts_enabled,
+      app_language: currentForm.app_language,
+      business_name: currentForm.business_name,
+      role: currentForm.role,
+      admin_name: currentForm.admin_name,
+      contact_number: currentForm.contact_number,
+      gstin: currentForm.gstin,
+      hub_location: currentForm.hub_location,
+    };
+
+    const { error, response } = await fetchWithAuth(`${getApiBase()}/profile`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+
+    if (error === 'unauthorized') return;
+
+    if (error || !response.ok) {
+      setSaveLifecycle('save_error');
+      let msg = 'Failed to save settings.';
+      try {
+        const errData = await response.json();
+        if (errData.detail) {
+          if (Array.isArray(errData.detail)) {
+              msg = errData.detail.map(e => e.msg).join(", ");
+          } else {
+              msg = errData.detail;
+          }
+        }
+      } catch(e) {}
+      addToast(msg, 'error');
+    } else {
+      const data = await response.json();
+      const normalized = normalizeForm(data);
+      setOriginalForm(normalized);
+      setCurrentForm(normalized);
+      setGlobalLanguage(normalized.app_language);
+      setSaveLifecycle('saved');
+      addToast('Trade Settings Saved Successfully!', 'success');
+      
+      if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
+      saveTimeoutRef.current = setTimeout(() => {
+        setSaveLifecycle(prev => prev === 'saved' ? 'idle' : prev);
+      }, 3000);
     }
   };
 
   const handleExportCsv = async () => {
     try {
-      const token = localStorage.getItem('gc_user');
-      const res = await fetch(`${getApiBase()}/profile/export`, {
-        credentials: "include"
-      });
-      if (!res.ok) throw new Error('Export failed');
-      const blob = await res.blob();
+      const { error, response } = await fetchWithAuth(`${getApiBase()}/profile/export`);
+      if (error === 'unauthorized') return;
+      if (error || !response.ok) throw new Error('Export failed');
+      
+      const blob = await response.blob();
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
@@ -279,31 +383,52 @@ export default function ProfileSettings() {
       a.click();
       a.remove();
       window.URL.revokeObjectURL(url);
+      addToast('Export downloaded successfully.', 'success');
     } catch (err) {
-      console.error(err);
-      alert('Failed to export CSV.');
+      addToast('Failed to export CSV.', 'error');
     }
   };
 
   const handleLogout = async () => {
     try {
-      await fetch(`${getApiBase()}/auth/logout`, {
-        method: 'POST',
-        credentials: "include"
-      });
-    } catch(err) {
-      console.error(err);
-    }
+      await fetchWithAuth(`${getApiBase()}/auth/logout`, { method: 'POST' });
+    } catch(err) {}
     localStorage.removeItem('gc_user');
     sessionStorage.clear();
     router.replace('/login');
   };
 
+  // ── RENDERERS ──
 
+  if (pageState === 'loading') {
+    return (
+      <div className="min-h-screen bg-[#FAFAFA]">
+        <header className="sticky top-0 z-50 bg-white border-b border-[#EBEBEB] px-4 py-3 flex items-center gap-3">
+          <button className="p-1.5 -ml-1.5 hover:bg-[#FAFAFA] rounded-md transition-colors">
+            <ChevronLeft size={24} className="text-[#111111]" />
+          </button>
+          <h1 className="text-sm font-extrabold tracking-tight uppercase">{t('Profile & Settings')}</h1>
+        </header>
+        <ProfileSkeleton />
+      </div>
+    );
+  }
+
+  if (pageState === 'fatal_error' || pageState === 'unauthorized') {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-[#FAFAFA]">
+        <div className="text-center">
+          <h2 className="text-lg font-bold text-[#111111] mb-2">Unable to load profile</h2>
+          <p className="text-[#666666] mb-4">Please check your connection and try again.</p>
+          <AnimatedButton onClick={() => window.location.reload()}>Retry</AnimatedButton>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div
-      className="min-h-screen text-[#111111] font-sans pb-12"
+      className="min-h-screen text-[#111111] font-sans pb-24"
       style={{
         backgroundColor: '#FAFAFA',
         backgroundImage: "url('/chicken-pattern.svg')",
@@ -331,32 +456,46 @@ export default function ProfileSettings() {
               fileInputRef={fileInputRef}
               handleFileChange={handleFileChange}
               handleAvatarClick={handleAvatarClick}
-              isUploading={isUploading}
+              isUploading={isAvatarUploading}
               profilePicUrl={profilePicUrl}
-              businessName={businessName}
+              businessName={currentForm?.business_name}
             />
             <div className="flex-1">
-              <input type="text" value={businessName} onChange={(e) => setBusinessName(e.target.value)} className="text-lg font-bold bg-transparent border-b border-transparent hover:border-[#EBEBEB] focus:border-[#111111] focus:outline-none transition-colors px-1 -ml-1 w-full max-w-xs" />
-              <input type="text" value={role} onChange={(e) => setRole(e.target.value)} className="text-[#666666] block text-xs font-bold uppercase tracking-wider mt-0.5 bg-transparent border-b border-transparent hover:border-[#EBEBEB] focus:border-[#111111] focus:outline-none transition-colors px-1 -ml-1 w-full max-w-xs" />
+              <input 
+                type="text" 
+                value={currentForm.business_name} 
+                onChange={(e) => updateField('business_name', e.target.value)} 
+                maxLength={255}
+                placeholder="Business Name"
+                className="text-lg font-bold bg-transparent border-b border-transparent hover:border-[#EBEBEB] focus:border-[#111111] focus:outline-none transition-colors px-1 -ml-1 w-full max-w-xs" 
+              />
+              <input 
+                type="text" 
+                value={currentForm.role} 
+                onChange={(e) => updateField('role', e.target.value)} 
+                maxLength={100}
+                placeholder="Role"
+                className="text-[#666666] block text-xs font-bold uppercase tracking-wider mt-0.5 bg-transparent border-b border-transparent hover:border-[#EBEBEB] focus:border-[#111111] focus:outline-none transition-colors px-1 -ml-1 w-full max-w-xs" 
+              />
             </div>
           </div>
           
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-2">
             <div>
               <label className="block text-sm font-semibold capitalize tracking-wide text-[#666666] mb-1">{t('Admin Name')}</label>
-              <input type="text" value={adminName} onChange={(e) => setAdminName(e.target.value)} className="w-full px-3 py-2 bg-white border border-[#EBEBEB] rounded-md text-sm font-semibold text-[#111111] focus:outline-none focus:border-[#111111] transition-colors" />
+              <input type="text" maxLength={255} value={currentForm.admin_name} onChange={(e) => updateField('admin_name', e.target.value)} className="w-full px-3 py-2 bg-white border border-[#EBEBEB] rounded-md text-sm font-semibold text-[#111111] focus:outline-none focus:border-[#111111] transition-colors" />
             </div>
             <div>
               <label className="block text-sm font-semibold capitalize tracking-wide text-[#666666] mb-1">{t('Contact Number')}</label>
-              <input type="text" value={contactNumber} onChange={(e) => setContactNumber(e.target.value)} className="w-full px-3 py-2 bg-white border border-[#EBEBEB] rounded-md text-sm font-semibold text-[#111111] focus:outline-none focus:border-[#111111] transition-colors" />
+              <input type="text" maxLength={20} value={currentForm.contact_number} onChange={(e) => updateField('contact_number', e.target.value.replace(/[^0-9+]/g, ''))} className="w-full px-3 py-2 bg-white border border-[#EBEBEB] rounded-md text-sm font-semibold text-[#111111] focus:outline-none focus:border-[#111111] transition-colors" />
             </div>
             <div>
               <label className="block text-sm font-semibold capitalize tracking-wide text-[#666666] mb-1">{t('GSTIN')}</label>
-              <input type="text" value={gstin} onChange={(e) => setGstin(e.target.value)} className="w-full px-3 py-2 bg-white border border-[#EBEBEB] rounded-md text-sm font-semibold text-[#111111] focus:outline-none focus:border-[#111111] transition-colors" />
+              <input type="text" maxLength={15} value={currentForm.gstin} onChange={(e) => updateField('gstin', e.target.value.toUpperCase())} className="w-full px-3 py-2 bg-white border border-[#EBEBEB] rounded-md text-sm font-semibold text-[#111111] focus:outline-none focus:border-[#111111] transition-colors" />
             </div>
             <div>
               <label className="block text-sm font-semibold capitalize tracking-wide text-[#666666] mb-1">{t('Hub Location')}</label>
-              <input type="text" value={hubLocation} onChange={(e) => setHubLocation(e.target.value)} className="w-full px-3 py-2 bg-white border border-[#EBEBEB] rounded-md text-sm font-semibold text-[#111111] focus:outline-none focus:border-[#111111] transition-colors" />
+              <input type="text" maxLength={255} value={currentForm.hub_location} onChange={(e) => updateField('hub_location', e.target.value)} className="w-full px-3 py-2 bg-white border border-[#EBEBEB] rounded-md text-sm font-semibold text-[#111111] focus:outline-none focus:border-[#111111] transition-colors" />
             </div>
           </div>
         </SectionCard>
@@ -370,8 +509,10 @@ export default function ProfileSettings() {
                 <span className="absolute left-3 top-2.5 text-[#666666] font-bold text-sm">₹</span>
                 <input 
                   type="number" 
-                  value={basePrice} 
-                  onChange={(e) => setBasePrice(e.target.value)}
+                  min="0"
+                  step="0.01"
+                  value={currentForm.base_price_today} 
+                  onChange={(e) => updateField('base_price_today', e.target.value)}
                   className="w-full pl-8 pr-3 py-2 bg-white border border-[#EBEBEB] rounded-md text-sm font-bold text-[#111111] focus:outline-none focus:border-[#111111] transition-colors" 
                 />
               </div>
@@ -382,8 +523,10 @@ export default function ProfileSettings() {
                 <span className="absolute left-3 top-2.5 text-[#666666] font-bold text-sm">₹</span>
                 <input 
                   type="number" 
-                  value={creditLimit}
-                  onChange={(e) => setCreditLimit(e.target.value)}
+                  min="0"
+                  step="0.01"
+                  value={currentForm.default_credit_limit}
+                  onChange={(e) => updateField('default_credit_limit', e.target.value)}
                   className="w-full pl-8 pr-3 py-2 bg-white border border-[#EBEBEB] rounded-md text-sm font-bold text-[#111111] focus:outline-none focus:border-[#111111] transition-colors" 
                 />
               </div>
@@ -399,10 +542,10 @@ export default function ProfileSettings() {
               <p className="text-xs text-[#666666] mt-0.5">{t('Notify when truck temp > 30°C')}</p>
             </div>
             <button 
-              onClick={() => setIotAlerts(!iotAlerts)}
-              className={`w-11 h-6 rounded-full border transition-colors flex items-center px-0.5 ${iotAlerts ? 'bg-[#111111] border-[#111111]' : 'bg-[#FAFAFA] border-[#EBEBEB]'}`}
+              onClick={() => updateField('iot_alerts_enabled', !currentForm.iot_alerts_enabled)}
+              className={`w-11 h-6 rounded-full border transition-colors flex items-center px-0.5 ${currentForm.iot_alerts_enabled ? 'bg-[#111111] border-[#111111]' : 'bg-[#FAFAFA] border-[#EBEBEB]'}`}
             >
-              <div className={`w-4 h-4 rounded-full bg-white transition-transform ${iotAlerts ? 'translate-x-5' : 'translate-x-0 border border-[#EBEBEB]'}`}></div>
+              <div className={`w-4 h-4 rounded-full bg-white transition-transform ${currentForm.iot_alerts_enabled ? 'translate-x-5' : 'translate-x-0 border border-[#EBEBEB]'}`}></div>
             </button>
           </div>
           <div className="w-full h-px bg-[#EBEBEB]"></div>
@@ -412,10 +555,10 @@ export default function ProfileSettings() {
               <p className="text-xs text-[#666666] mt-0.5">{t('Daily settlement and overdue Khata notices')}</p>
             </div>
             <button 
-              onClick={() => setKhataAlerts(!khataAlerts)}
-              className={`w-11 h-6 rounded-full border transition-colors flex items-center px-0.5 ${khataAlerts ? 'bg-[#111111] border-[#111111]' : 'bg-[#FAFAFA] border-[#EBEBEB]'}`}
+              onClick={() => updateField('financial_alerts_enabled', !currentForm.financial_alerts_enabled)}
+              className={`w-11 h-6 rounded-full border transition-colors flex items-center px-0.5 ${currentForm.financial_alerts_enabled ? 'bg-[#111111] border-[#111111]' : 'bg-[#FAFAFA] border-[#EBEBEB]'}`}
             >
-              <div className={`w-4 h-4 rounded-full bg-white transition-transform ${khataAlerts ? 'translate-x-5' : 'translate-x-0 border border-[#EBEBEB]'}`}></div>
+              <div className={`w-4 h-4 rounded-full bg-white transition-transform ${currentForm.financial_alerts_enabled ? 'translate-x-5' : 'translate-x-0 border border-[#EBEBEB]'}`}></div>
             </button>
           </div>
         </SectionCard>
@@ -429,14 +572,14 @@ export default function ProfileSettings() {
             </div>
             <div className="flex bg-[#FAFAFA] border border-[#EBEBEB] rounded-lg p-1">
               <button 
-                onClick={() => setLanguage('English')}
-                className={`px-3 py-1 text-xs font-bold rounded-md transition-colors ${language === 'English' ? 'bg-white shadow-sm border border-[#EBEBEB] text-[#111111]' : 'text-[#666666]'}`}
+                onClick={() => updateField('app_language', 'English')}
+                className={`px-3 py-1 text-xs font-bold rounded-md transition-colors ${currentForm.app_language === 'English' ? 'bg-white shadow-sm border border-[#EBEBEB] text-[#111111]' : 'text-[#666666]'}`}
               >
                 ENG
               </button>
               <button 
-                onClick={() => setLanguage('Telugu')}
-                className={`px-3 py-1 text-xs font-bold rounded-md transition-colors ${language === 'Telugu' ? 'bg-white shadow-sm border border-[#EBEBEB] text-[#111111]' : 'text-[#666666]'}`}
+                onClick={() => updateField('app_language', 'Telugu')}
+                className={`px-3 py-1 text-xs font-bold rounded-md transition-colors ${currentForm.app_language === 'Telugu' ? 'bg-white shadow-sm border border-[#EBEBEB] text-[#111111]' : 'text-[#666666]'}`}
               >
                 తెలుగు
               </button>
@@ -459,7 +602,7 @@ export default function ProfileSettings() {
         {/* ── 5. Security (Danger Zone) ── */}
         <SectionCard icon={Shield} title="Security">
           <div className="flex flex-col gap-3">
-            <button className="w-full flex items-center justify-center gap-2 px-4 py-3 border border-[#EBEBEB] hover:border-[#111111] hover:bg-[#FAFAFA] text-[#111111] text-xs font-bold uppercase tracking-wider rounded-md transition-all">
+            <button onClick={() => addToast('Password reset email sent (simulation)', 'success')} className="w-full flex items-center justify-center gap-2 px-4 py-3 border border-[#EBEBEB] hover:border-[#111111] hover:bg-[#FAFAFA] text-[#111111] text-xs font-bold uppercase tracking-wider rounded-md transition-all">
               <KeyRound size={16} /> {t('Reset Admin Password')}
             </button>
             <button onClick={handleLogout} className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-[#111111] hover:bg-black text-white text-xs font-bold uppercase tracking-wider rounded-md transition-all">
@@ -472,9 +615,14 @@ export default function ProfileSettings() {
 
       {/* ── Fixed Bottom Action Bar ── */}
       <div className="fixed bottom-0 left-0 right-0 p-4 bg-white border-t border-[#EBEBEB] shadow-[0_-4px_20px_rgb(0,0,0,0.05)] z-50">
-        <div className="max-w-3xl mx-auto flex justify-end">
-          <AnimatedButton className="w-full md:w-[280px]" onClick={handleSave} disabled={isSaving || isLoading}>
-            {isSaving ? t('Saving...') : t('Save Trade Settings')}
+        <div className="max-w-3xl mx-auto flex justify-end items-center gap-4">
+          {isDirty && <span className="text-xs font-bold text-amber-600 hidden md:block">Unsaved changes</span>}
+          <AnimatedButton 
+            className="w-full md:w-[280px]" 
+            onClick={handleSave} 
+            disabled={!isDirty || saveLifecycle === 'saving'}
+          >
+            {saveLifecycle === 'saving' ? t('Saving...') : saveLifecycle === 'saved' ? t('Saved ✓') : t('Save Trade Settings')}
           </AnimatedButton>
         </div>
       </div>
