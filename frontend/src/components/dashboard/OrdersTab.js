@@ -108,6 +108,7 @@ export function OrdersTab() {
   const {
     ordersList,
     productPrices,
+    isLoadingOrders,
     isLoadingPrices,
     isLoadingMarket,
     ordersError,
