@@ -23,6 +23,7 @@ export function OverviewTab() {
     MOCK_AI_FORECAST,
     MOCK_SALES_DATA,
     trucks,
+    retailers,
     isLoadingTrucks,
     totalOutstanding,
     totalCapacity,
@@ -127,7 +128,7 @@ export function OverviewTab() {
               </div>
             }
             icon={Wallet}
-            subtitle="From 12 retailers"
+            subtitle={`From ${retailers.filter(r => Number(r.balance) > 0).length} retailers`}
             trend="down"
           />
           {controls}
