@@ -50,11 +50,11 @@ async def generate_quote_number(db: AsyncSession, tenant_id: uuid.UUID) -> str:
 @router.post("/", response_model=QuoteResponse, status_code=status.HTTP_201_CREATED)
 async def create_quote(
     payload: QuoteCreate,
-    tenant_id: str = Depends(get_current_tenant),
+    tenant_id: uuid.UUID = Depends(get_current_tenant),
     db: AsyncSession = Depends(get_db)
 ):
     """Create a new quote in DRAFT state."""
-    t_id = uuid.UUID(tenant_id)
+    t_id = tenant_id
     items_input = [{"sku": i.sku, "quantity_kg": i.quantity_kg} for i in payload.items]
 
     try:
@@ -82,7 +82,7 @@ async def create_quote(
 @router.post("/preview")
 async def preview_quote(
     req: Request,
-    tenant_id: str = Depends(get_current_tenant),
+    tenant_id: uuid.UUID = Depends(get_current_tenant),
     db: AsyncSession = Depends(get_db)
 ):
     """Preview pricing and zone surcharge totals before committing. Supports n8n and REST schemas."""
@@ -126,7 +126,7 @@ async def preview_quote(
     except Exception as e:
         raise HTTPException(status_code=422, detail=f"Invalid payload: {str(e)}")
 
-    t_id = uuid.UUID(tenant_id)
+    t_id = tenant_id
     items_input = [{"sku": i.sku, "quantity_kg": i.quantity_kg} for i in payload.items]
 
     try:
@@ -169,11 +169,11 @@ async def preview_quote(
 
 @router.get("/", response_model=List[QuoteResponse])
 async def get_quotes(
-    tenant_id: str = Depends(get_current_tenant),
+    tenant_id: uuid.UUID = Depends(get_current_tenant),
     db: AsyncSession = Depends(get_db)
 ):
     """Retrieve all quote snapshots for the active tenant."""
-    t_id = tenant_id if isinstance(tenant_id, uuid.UUID) else uuid.UUID(str(tenant_id))
+    t_id = tenant_id
     stmt = select(Quote).options(selectinload(Quote.items)).where(Quote.tenant_id == t_id).order_by(Quote.created_at.desc())
     res = await db.execute(stmt)
     quotes = res.scalars().all()
@@ -184,11 +184,11 @@ async def get_quotes(
 @router.get("/{id}", response_model=QuoteResponse)
 async def get_quote(
     id: uuid.UUID,
-    tenant_id: str = Depends(get_current_tenant),
+    tenant_id: uuid.UUID = Depends(get_current_tenant),
     db: AsyncSession = Depends(get_db)
 ):
     """Fetch a single detailed quote snapshot by ID."""
-    t_id = uuid.UUID(tenant_id)
+    t_id = tenant_id
     stmt = select(Quote).options(selectinload(Quote.items)).where(Quote.id == id, Quote.tenant_id == t_id)
     res = await db.execute(stmt)
     quote = res.scalars().first()
@@ -201,11 +201,11 @@ async def get_quote(
 @router.api_route("/{id}/approve", methods=["POST", "PATCH"], response_model=QuoteResponse)
 async def approve_quote(
     id: uuid.UUID,
-    tenant_id: str = Depends(get_current_tenant),
+    tenant_id: uuid.UUID = Depends(get_current_tenant),
     db: AsyncSession = Depends(get_db)
 ):
     """Manually transition a quote state to APPROVED."""
-    t_id = uuid.UUID(tenant_id)
+    t_id = tenant_id
     stmt = select(Quote).where(Quote.id == id, Quote.tenant_id == t_id)
     res = await db.execute(stmt)
     quote = res.scalars().first()
@@ -231,11 +231,11 @@ async def approve_quote(
 @router.patch("/{id}/reject", response_model=QuoteResponse)
 async def reject_quote(
     id: uuid.UUID,
-    tenant_id: str = Depends(get_current_tenant),
+    tenant_id: uuid.UUID = Depends(get_current_tenant),
     db: AsyncSession = Depends(get_db)
 ):
     """Manually transition a quote state to REJECTED."""
-    t_id = uuid.UUID(tenant_id)
+    t_id = tenant_id
     stmt = select(Quote).where(Quote.id == id, Quote.tenant_id == t_id)
     res = await db.execute(stmt)
     quote = res.scalars().first()
@@ -260,11 +260,11 @@ async def reject_quote(
 @router.post("/{id}/convert", response_model=QuoteResponse)
 async def convert_quote(
     id: uuid.UUID,
-    tenant_id: str = Depends(get_current_tenant),
+    tenant_id: uuid.UUID = Depends(get_current_tenant),
     db: AsyncSession = Depends(get_db)
 ):
     """ACID convert an APPROVED quote to a real order with WhatsApp integration outbox logging."""
-    t_id = uuid.UUID(tenant_id)
+    t_id = tenant_id
     try:
         quote = await quote_service.convert_to_order(
             db=db,
