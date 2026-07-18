@@ -4,9 +4,15 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 from decimal import Decimal
 import re
 
-class ProfileBase(BaseModel):
-    admin_name: Optional[str] = Field(None, max_length=255)
+class ProfileIdentity(BaseModel):
+    name: Optional[str] = Field(None, max_length=255)
+    email: Optional[str] = Field(None, max_length=320)
+    avatar_url: Optional[str] = Field(None, max_length=500)
     role: Optional[str] = Field(None, max_length=100)
+
+class ProfileBusiness(BaseModel):
+    id: Optional[uuid.UUID] = None
+    tenant_id: Optional[uuid.UUID] = None
     business_name: Optional[str] = Field(None, max_length=255)
     gstin: Optional[str] = Field(None, max_length=15)
     contact_number: Optional[str] = Field(None, max_length=20)
@@ -16,7 +22,7 @@ class ProfileBase(BaseModel):
     iot_alerts_enabled: Optional[bool] = None
     financial_alerts_enabled: Optional[bool] = None
     app_language: Optional[str] = Field(None, max_length=50)
-    profile_pic_url: Optional[str] = Field(None, max_length=500)
+    onboarding_completed: Optional[bool] = None
 
     @field_validator('contact_number')
     @classmethod
@@ -42,14 +48,12 @@ class ProfileBase(BaseModel):
             return v.upper()
         return v
 
-class ProfileCreate(ProfileBase):
-    pass
+class ProfileUpdate(BaseModel):
+    identity: Optional[ProfileIdentity] = None
+    business: Optional[ProfileBusiness] = None
 
-class ProfileUpdate(ProfileBase):
-    pass
-
-class ProfileResponse(ProfileBase):
-    id: uuid.UUID
-    tenant_id: uuid.UUID
+class ProfileResponse(BaseModel):
+    identity: ProfileIdentity
+    business: ProfileBusiness
 
     model_config = ConfigDict(from_attributes=True)

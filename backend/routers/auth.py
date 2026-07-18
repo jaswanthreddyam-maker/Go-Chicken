@@ -241,7 +241,7 @@ async def oauth_google(request: Request, body: OAuthRequest, response: Response,
             tenant_id = user.tenant_id
         else:
             # Automatic Tenant Creation
-            tenant = Tenant(name=f"{full_name}'s Business")
+            tenant = Tenant(name="")
             db.add(tenant)
             await db.flush()
             
@@ -269,12 +269,11 @@ async def oauth_google(request: Request, body: OAuthRequest, response: Response,
             # Create Profile
             profile = BusinessProfile(
                 tenant_id=tenant.id,
-                admin_name=full_name,
-                business_name=f"{full_name}'s Business",
-                role="Owner",
+                business_name="",
                 app_language="English",
                 iot_alerts_enabled=True,
                 financial_alerts_enabled=True,
+                onboarding_completed=False
             )
             db.add(profile)
             
@@ -408,8 +407,7 @@ async def google_callback(request: Request, code: str = None, error: str = None,
 
     if not user:
         # Create new tenant and user
-        business_name = f"{name}'s Poultry Hub"
-        tenant = Tenant(name=business_name)
+        tenant = Tenant(name="")
         db.add(tenant)
         await db.flush()
 
@@ -424,13 +422,11 @@ async def google_callback(request: Request, code: str = None, error: str = None,
 
         profile = BusinessProfile(
             tenant_id=tenant.id,
-            admin_name=name,
-            business_name=business_name,
-            role="Owner",
+            business_name="",
             app_language="English",
             iot_alerts_enabled=True,
             financial_alerts_enabled=True,
-            profile_pic_url=picture[:500] if picture else None,
+            onboarding_completed=False,
         )
         db.add(profile)
         await db.commit()

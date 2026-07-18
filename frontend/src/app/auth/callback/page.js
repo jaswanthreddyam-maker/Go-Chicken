@@ -66,7 +66,27 @@ function CallbackContent() {
         // We explicitly clear the Supabase session so we solely rely on gc_auth
         await supabase.auth.signOut();
 
-        router.push("/dashboard");
+        // Check if onboarding is complete
+        const profileRes = await fetch(`${getApiBase()}/profile`, {
+          headers: {
+            "Content-Type": "application/json",
+          },
+          credentials: "include" // Send the gc_auth cookie we just set (wait, NextJS routing doesn't immediately send it? Actually it's set on the backend, so the browser has it). But wait, we just set the cookie from the backend response.
+        });
+        
+        let needsOnboarding = false;
+        if (profileRes.ok) {
+            const profileData = await profileRes.json();
+            if (profileData.business && profileData.business.onboarding_completed === false) {
+                needsOnboarding = true;
+            }
+        }
+
+        if (needsOnboarding) {
+            router.push("/profile");
+        } else {
+            router.push("/dashboard");
+        }
       } catch (err) {
         console.error("Auth callback error:", err);
         router.push("/login?error=oauth_failed");

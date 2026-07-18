@@ -24,5 +24,6 @@ class BusinessProfile(Base):
     financial_alerts_enabled: Mapped[bool] = mapped_column(Boolean, default=True)
     app_language: Mapped[str] = mapped_column(String(50), default="English")
     profile_pic_url: Mapped[str | None] = mapped_column(String(500))
+    onboarding_completed: Mapped[bool] = mapped_column(Boolean, default=True, server_default="true")
     
     tenant = relationship("Tenant", backref="business_profile")

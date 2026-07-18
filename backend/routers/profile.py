@@ -25,8 +25,11 @@ async def get_profile(
     db: AsyncSession = Depends(get_db),
     tenant_id: uuid.UUID = Depends(get_current_tenant)
 ):
-    """Fetch the business profile for the currently authenticated tenant."""
+    """Fetch the business profile and user identity for the currently authenticated tenant."""
     try:
+        from models.user import User, UserRole
+        
+        # Get profile
         result = await db.execute(
             select(BusinessProfile).where(BusinessProfile.tenant_id == tenant_id)
         )
@@ -36,33 +39,50 @@ async def get_profile(
         if not profile:
             profile = BusinessProfile(
                 tenant_id=tenant_id,
-                admin_name="Admin",
-                role="Owner",
-                business_name="My Business",
+                business_name="",
                 app_language="English",
                 iot_alerts_enabled=True,
-                financial_alerts_enabled=True
+                financial_alerts_enabled=True,
+                onboarding_completed=False
             )
             db.add(profile)
             await db.commit()
             await db.refresh(profile)
             
-        return profile
+        # Get user (Owner/Admin)
+        user_result = await db.execute(
+            select(User).where(User.tenant_id == tenant_id, User.role == UserRole.ADMIN)
+        )
+        user = user_result.scalar_one_or_none()
+        
+        return ProfileResponse(
+            identity={
+                "name": user.name if user else "Owner",
+                "email": user.email if user else "",
+                "avatar_url": user.avatar_url if user else None,
+                "role": "Owner"  # We map ADMIN to Owner for the UI
+            },
+            business={
+                "id": profile.id,
+                "tenant_id": profile.tenant_id,
+                "business_name": profile.business_name,
+                "gstin": profile.gstin,
+                "contact_number": profile.contact_number,
+                "hub_location": profile.hub_location,
+                "base_price_today": profile.base_price_today,
+                "default_credit_limit": profile.default_credit_limit,
+                "iot_alerts_enabled": profile.iot_alerts_enabled,
+                "financial_alerts_enabled": profile.financial_alerts_enabled,
+                "app_language": profile.app_language,
+                "onboarding_completed": profile.onboarding_completed
+            }
+        )
     except Exception as e:
         import logging
         logger = logging.getLogger(__name__)
-        logger.warning("Database offline during get_profile (%s). Returning demo profile.", e)
-        return ProfileResponse(
-            id=uuid.uuid4(),
-            tenant_id=tenant_id,
-            admin_name="Demo Admin",
-            business_name="Demo Business",
-            role="Owner",
-            contact_number="",
-            app_language="English",
-            iot_alerts_enabled=True,
-            financial_alerts_enabled=True
-        )
+        logger.error("Error during get_profile: %s", e)
+        raise HTTPException(status_code=500, detail="Internal Server Error")
+
 
 @router.put("", response_model=ProfileResponse)
 @router.put("/", response_model=ProfileResponse)
@@ -71,44 +91,60 @@ async def update_profile(
     db: AsyncSession = Depends(get_db),
     tenant_id: uuid.UUID = Depends(get_current_tenant)
 ):
-    """Update the business profile ensuring cross-tenant boundaries are strictly respected."""
-    result = await db.execute(
-        select(BusinessProfile).where(BusinessProfile.tenant_id == tenant_id)
-    )
-    profile = result.scalar_one_or_none()
+    """Update the business profile and identity ensuring cross-tenant boundaries are strictly respected."""
+    from models.user import User, UserRole
     
-    if not profile:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Business profile not found for this tenant."
+    # 1. Update Business Profile
+    if payload.business:
+        result = await db.execute(
+            select(BusinessProfile).where(BusinessProfile.tenant_id == tenant_id)
         )
+        profile = result.scalar_one_or_none()
         
-    # Safely apply updates, ignoring None values to support partial updates
-    update_data = payload.model_dump(exclude_unset=True)
-    for key, value in update_data.items():
-        setattr(profile, key, value)
+        if not profile:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Business profile not found for this tenant."
+            )
+            
+        update_data = payload.business.model_dump(exclude_unset=True, exclude={"id", "tenant_id"})
         
-    # Sync contact_number to User table for WhatsApp routing
-    if "contact_number" in update_data and update_data["contact_number"]:
-        from models.user import User, UserRole
-        user_result = await db.execute(select(User).where(User.tenant_id == tenant_id, User.role == UserRole.ADMIN))
+        for key, value in update_data.items():
+            setattr(profile, key, value)
+            
+        # Automatically mark onboarding as complete if they saved a business name
+        if payload.business.business_name:
+            profile.onboarding_completed = True
+            
+        # Sync contact_number to User table for WhatsApp routing
+        if "contact_number" in update_data and update_data["contact_number"]:
+            user_result = await db.execute(select(User).where(User.tenant_id == tenant_id, User.role == UserRole.ADMIN))
+            user = user_result.scalar_one_or_none()
+            if user:
+                import re
+                clean_phone = re.sub(r'\D', '', update_data["contact_number"])
+                if clean_phone and user.phone != clean_phone:
+                    other_user_res = await db.execute(select(User).where(User.phone == clean_phone))
+                    other_user = other_user_res.scalar_one_or_none()
+                    if other_user and other_user.id != user.id:
+                        other_user.phone = f"old_{other_user.phone}"
+                    user.phone = clean_phone
+                    
+    # 2. Update Identity
+    if payload.identity:
+        user_result = await db.execute(
+            select(User).where(User.tenant_id == tenant_id, User.role == UserRole.ADMIN)
+        )
         user = user_result.scalar_one_or_none()
         if user:
-            # Strip non-numeric characters for WhatsApp format (e.g. 15551701265)
-            import re
-            clean_phone = re.sub(r'\D', '', update_data["contact_number"])
-            if clean_phone and user.phone != clean_phone:
-                # Release this phone number from any other user (e.g. seed data or previous demo)
-                other_user_res = await db.execute(select(User).where(User.phone == clean_phone))
-                other_user = other_user_res.scalar_one_or_none()
-                if other_user and other_user.id != user.id:
-                    other_user.phone = f"old_{other_user.phone}"
-                    
-                user.phone = clean_phone
-                
+            if payload.identity.name is not None:
+                user.name = payload.identity.name
+
     await db.commit()
-    await db.refresh(profile)
-    return profile
+    
+    # Return updated profile
+    return await get_profile(db=db, tenant_id=tenant_id)
+
 
 @router.post("/upload_avatar", response_model=ProfileResponse)
 async def upload_avatar(
@@ -116,25 +152,27 @@ async def upload_avatar(
     db: AsyncSession = Depends(get_db),
     tenant_id: uuid.UUID = Depends(get_current_tenant),
 ):
-    """Upload a profile picture to Cloudinary and store the URL."""
-    result = await db.execute(
-        select(BusinessProfile).where(BusinessProfile.tenant_id == tenant_id)
+    """Upload a profile picture to Cloudinary and store the URL on the User."""
+    from models.user import User, UserRole
+    
+    user_result = await db.execute(
+        select(User).where(User.tenant_id == tenant_id, User.role == UserRole.ADMIN)
     )
-    profile = result.scalar_one_or_none()
+    user = user_result.scalar_one_or_none()
 
-    if not profile:
+    if not user:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Business profile not found for this tenant.",
+            detail="Admin user not found for this tenant.",
         )
 
     # Stream to Cloudinary — no local disk I/O
     secure_url = await upload_profile_picture(file, str(tenant_id))
 
-    profile.profile_pic_url = secure_url
+    user.avatar_url = secure_url
     await db.commit()
-    await db.refresh(profile)
-    return profile
+    
+    return await get_profile(db=db, tenant_id=tenant_id)
 
 
 @router.get("/export")
