@@ -2,8 +2,7 @@ import asyncio
 import json
 import logging
 from typing import Dict, Any, Set
-from datetime import datetime
-
+from datetime import datetime, timezone
 logger = logging.getLogger("go_chicken.event_broadcaster")
 
 # In-memory pubsub for SSE
@@ -18,7 +17,7 @@ async def broadcast_event(event_type: str, payload: Dict[str, Any]):
     event = {
         "type": event_type,
         "data": payload,
-        "timestamp": datetime.utcnow().isoformat() + "Z"
+        "timestamp": datetime.now(timezone.utc).isoformat()
     }
     
     # Push to all connected queues

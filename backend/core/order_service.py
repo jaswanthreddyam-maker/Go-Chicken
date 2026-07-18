@@ -396,8 +396,8 @@ class OrderService:
                 "customer": customer_name,
                 "product": order.item_type,
                 "quantity": float(order.quantity_kg),
-                "amount": float(order.total_amount),
-                "timestamp": datetime.utcnow().isoformat() + "Z"
+                "amount": float(order.total_amount) if order.total_amount is not None else 0.0,
+                "timestamp": datetime.now(timezone.utc).isoformat()
             })
             
             # Also broadcast inventory change if applicable
@@ -571,4 +571,87 @@ class OrderService:
             performed_by=performed_by,
             reason=reason,
             payload=payload,
+        )
+
+    @classmethod
+    async def create_order(
+        cls,
+        db: AsyncSession,
+        tenant_id: UUID,
+        order_number: str,
+        customer_id: UUID,
+        items: List[Dict[str, Any]],
+        commit: bool = False,
+        performed_by: str = "SYSTEM"
+    ) -> Order:
+        """Create a new confirmed order directly from payload."""
+        # For a hackathon simplification, we take the first item
+        # Since this system handles mostly single-item orders like "50kg Live Bird"
+        if not items:
+            raise ValueError("Cannot create order without items")
+            
+        item = items[0]
+        qty = Decimal(item.get("quantity_kg", "0"))
+        unit_price = Decimal(item.get("unit_price", "0"))
+        
+        # We find the retailer's phone for SSE/WhatsApp purposes
+        from models.user import User
+        from sqlalchemy import select
+        user = await db.scalar(select(User).where(User.id == customer_id))
+        phone_number = user.phone if user else None
+        
+        order = Order(
+            tenant_id=tenant_id,
+            retailer_id=customer_id,
+            phone_number=phone_number,
+            item_type=item.get("sku", "Live Bird"),
+            quantity_kg=qty,
+            unit_price=unit_price,
+            total_amount=qty * unit_price,
+            status="pending", # Start as pending so transition engine handles inventory
+            order_source="quote_conversion"
+        )
+        db.add(order)
+        await db.flush() # flush to get order.id
+        
+        # Now use the transition engine to formally confirm it, which deducts inventory and writes ledger
+        res = await cls.confirm_order(
+            db=db,
+            tenant_id=tenant_id,
+            order=order,
+            performed_by=performed_by,
+            reason="Created from quote conversion",
+        )
+        
+        if commit:
+            await db.commit()
+            
+        return res.order
+        
+    @classmethod
+    async def create_from_quote(
+        cls,
+        db: AsyncSession,
+        tenant_id: UUID,
+        quote_id: UUID,
+        outbox_service: Any,
+        performed_by: str = "SYSTEM",
+        commit: bool = False
+    ):
+        """Submit a request to convert a quote. This delegates to QuoteService."""
+        from core.quote_service import QuoteService
+        from core.pricing_service import PricingService
+        
+        # Ensure we do not build domain objects here, just orchestrate the request
+        pricing = PricingService()
+        qs = QuoteService(pricing)
+        
+        # This executes QuoteStateMachine validation and emits QuoteConvertedIntegrationEvent
+        # The outbox consumer will subsequently pick it up and call cls.create_order
+        return await qs.convert_to_order(
+            db=db,
+            tenant_id=tenant_id,
+            quote_id=quote_id,
+            outbox_service=outbox_service,
+            commit=commit
         )

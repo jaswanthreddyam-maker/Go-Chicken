@@ -68,13 +68,15 @@ class TestOrderStatusToggle:
         mock_result = MagicMock()
         
         test_order_id = uuid.uuid4()
+        test_tenant_id = uuid.uuid4()
         existing_order = Order(
             id=test_order_id,
+            tenant_id=test_tenant_id,
             phone_number="+919876543210",
             item_type="Live Bird",
             quantity_kg=Decimal("50.00"),
             total_amount=Decimal("9000.00"),
-            status="pending"
+            status="out_for_delivery"
         )
         mock_result.scalar_one_or_none.return_value = existing_order
         mock_db.execute.return_value = mock_result
@@ -91,6 +93,7 @@ class TestOrderStatusToggle:
                 order_id=test_order_id,
                 payload=payload,
                 background_tasks=mock_bg_tasks,
+                tenant_id=test_tenant_id,
                 db=mock_db
             )
 

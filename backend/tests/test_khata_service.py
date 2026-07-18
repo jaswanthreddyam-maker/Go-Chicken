@@ -75,7 +75,7 @@ class FakeKhataSession:
             return FakeResult(results)
 
         # 3. Querying CustomerBalanceProjection
-        if "customer_balance_projection" in stmt_str:
+        if "khata_customer_balances" in stmt_str:
             results = [x for x in self.items if isinstance(x, CustomerBalanceProjection)]
             return FakeResult(results)
 

@@ -112,10 +112,24 @@ async def update_order_status(
         
     old_status = order.status
     new_status = payload.status.lower()
-    order.status = new_status
     
-    await db.commit()
-    await db.refresh(order)
+    from core.order_service import OrderService
+    if new_status == "confirmed":
+        res = await OrderService.confirm_order(db, tenant_id, order, performed_by="DASHBOARD_ADMIN")
+    elif new_status == "loaded":
+        res = await OrderService.load_order(db, tenant_id, order, performed_by="DASHBOARD_ADMIN")
+    elif new_status == "out_for_delivery":
+        res = await OrderService.dispatch_order(db, tenant_id, order, performed_by="DASHBOARD_ADMIN")
+    elif new_status == "delivered":
+        res = await OrderService.deliver_order(db, tenant_id, order, performed_by="DASHBOARD_ADMIN")
+    elif new_status == "cancelled":
+        res = await OrderService.cancel_order(db, tenant_id, order, reason="Cancelled via Dashboard", performed_by="DASHBOARD_ADMIN")
+    else:
+        # Fallback for 'pending' or unexpected statuses that don't have wrappers
+        res = await OrderService._execute_transition(db, tenant_id, order, new_status, performed_by="DASHBOARD_ADMIN")
+
+    if not res.success:
+        raise HTTPException(status_code=400, detail=res.message)
     
     logger.info(f"📋 Order {order_id} status changed: {old_status} -> {new_status}")
     
@@ -129,7 +143,7 @@ async def update_order_status(
             message=msg
         )
         
-    return order
+    return res.order
 
 
 def _format_status_notification_message(order: Order, status_val: str) -> str:

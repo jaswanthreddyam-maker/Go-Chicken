@@ -32,14 +32,14 @@ class QuoteCreate(BaseModel):
     customer_id: UUID = Field(..., description="Target retailer customer ID")
     delivery_zone: Optional[str] = Field(None, description="Delivery zone name for surcharge calculation")
     expires_at: Optional[datetime] = Field(None, description="Quote expiration date")
-    items: List[QuoteItemCreate] = Field(..., min_items=1, description="List of items in the quote")
+    items: List[QuoteItemCreate] = Field(..., min_length=1, description="List of items in the quote")
 
 
 class QuotePreviewRequest(BaseModel):
     """Request payload to preview quote financial breakdowns."""
     customer_id: UUID = Field(..., description="Retailer customer ID")
     delivery_zone: Optional[str] = Field(None, description="Target delivery zone")
-    items: List[QuoteItemCreate] = Field(..., min_items=1, description="List of items to preview")
+    items: List[QuoteItemCreate] = Field(..., min_length=1, description="List of items to preview")
 
 
 class QuoteItemResponse(BaseModel):

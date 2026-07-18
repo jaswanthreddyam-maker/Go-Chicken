@@ -55,13 +55,13 @@ class FakeAnalyticsSession:
                 self.items = [x for x in self.items if not isinstance(x, FinancialDailyKPI)]
             elif "analytics_communication_daily_kpi" in stmt_str:
                 self.items = [x for x in self.items if not isinstance(x, CommunicationDailyKPI)]
-            elif "analytics_event_processed" in stmt_str:
+            elif "analytics_events_processed" in stmt_str:
                 self.items = [x for x in self.items if not isinstance(x, AnalyticsEventProcessed)]
             return FakeResult([])
 
         params = stmt.compile().params if hasattr(stmt, "compile") else {}
 
-        if "analytics_event_processed" in stmt_str:
+        if "analytics_events_processed" in stmt_str:
             results = [x for x in self.items if isinstance(x, AnalyticsEventProcessed)]
             for k, val in params.items():
                 if "event_id" in k:

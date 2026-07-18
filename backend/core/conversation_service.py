@@ -677,17 +677,17 @@ class ConversationService:
             if not state.pending_quote_id:
                 return await cls._advance_order_state(db, state, user)
                 
-            pricing_service = PricingService()
-            quote_service = QuoteService(pricing_service)
+            from core.order_service import OrderService
             outbox_service = OutboxService()
             
             try:
                 # This will raise QuoteExpiredError if expired
-                quote = await quote_service.convert_to_order(
+                quote = await OrderService.create_from_quote(
                     db=db,
                     tenant_id=state.tenant_id,
                     quote_id=state.pending_quote_id,
                     outbox_service=outbox_service,
+                    performed_by=f"whatsapp_{user.id}" if user else "SYSTEM",
                     commit=True
                 )
                 

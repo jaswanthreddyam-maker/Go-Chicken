@@ -172,8 +172,7 @@ export function DashboardDataProvider({ children }) {
     if (!silent) setIsLoadingInventory(true);
     try {
       const headers = {
-        "Content-Type": "application/json",
-        "X-Tenant-ID": "00000000-0000-0000-0000-000000000001",
+        "Content-Type": "application/json"
       };
       const [invRes, txnRes] = await Promise.all([
         fetch(`${API_BASE}/inventory/`, { headers }),
