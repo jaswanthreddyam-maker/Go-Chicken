@@ -8,7 +8,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from core.database import get_db
-from core.auth_utils import get_current_user_from_cookie
+from core.auth import get_current_tenant
+from models.tenant import Tenant
 from core.event_broadcaster import broadcast_event
 from models.market import MarketSnapshot, PriceRecommendation
 from models.pricing import ProductPrice, PriceBook, PriceBookEntry, PriceHistory
@@ -22,16 +23,15 @@ router = APIRouter(
 
 @router.get("/intelligence")
 async def get_market_intelligence(
-    request: Request,
+    tenant: Tenant = Depends(get_current_tenant),
     db: AsyncSession = Depends(get_db)
 ):
     """Fetch the latest MarketSnapshot and any PENDING recommendations."""
-    user = await get_current_user_from_cookie(request)
     
     # Get latest snapshot for tenant
     stmt = (
         select(MarketSnapshot)
-        .where(MarketSnapshot.tenant_id == user["tenant_id"])
+        .where(MarketSnapshot.tenant_id == tenant.id)
         .order_by(MarketSnapshot.captured_at.desc())
         .limit(1)
         .options(selectinload(MarketSnapshot.recommendations))
@@ -74,16 +74,15 @@ async def get_market_intelligence(
 @router.post("/recommendations/{recommendation_id}/accept")
 async def accept_recommendation(
     recommendation_id: uuid.UUID,
-    request: Request,
+    tenant: Tenant = Depends(get_current_tenant),
     db: AsyncSession = Depends(get_db)
 ):
     """Mark recommendation as ACCEPTED and apply the price change."""
-    user = await get_current_user_from_cookie(request)
 
     # Fetch recommendation
     stmt = select(PriceRecommendation).where(
         PriceRecommendation.id == recommendation_id,
-        PriceRecommendation.tenant_id == user["tenant_id"],
+        PriceRecommendation.tenant_id == tenant.id,
         PriceRecommendation.status == "PENDING"
     )
     result = await db.execute(stmt)
@@ -116,7 +115,7 @@ async def accept_recommendation(
 
     # 3. Update the Base Tier PriceBook (Enterprise model)
     stmt_pb = select(PriceBook).where(
-        PriceBook.tenant_id == user["tenant_id"],
+        PriceBook.tenant_id == tenant.id,
         PriceBook.name == "Base Wholesale"
     )
     result_pb = await db.execute(stmt_pb)
@@ -138,7 +137,7 @@ async def accept_recommendation(
             
             # Log audit
             history = PriceHistory(
-                tenant_id=user["tenant_id"],
+                tenant_id=tenant.id,
                 entity_type="PRICE_BOOK_ENTRY",
                 entity_id=pbe.id,
                 old_price=old_price,
@@ -152,7 +151,7 @@ async def accept_recommendation(
     await broadcast_event(
         "pricing.recommendation.accepted",
         {
-            "tenant_id": user["tenant_id"],
+            "tenant_id": str(tenant.id),
             "sku": rec.sku,
             "new_price": float(rec.recommended_price),
             "timestamp": datetime.now(timezone.utc).isoformat()
@@ -165,15 +164,14 @@ async def accept_recommendation(
 @router.post("/recommendations/{recommendation_id}/ignore")
 async def ignore_recommendation(
     recommendation_id: uuid.UUID,
-    request: Request,
+    tenant: Tenant = Depends(get_current_tenant),
     db: AsyncSession = Depends(get_db)
 ):
     """Mark recommendation as IGNORED."""
-    user = await get_current_user_from_cookie(request)
 
     stmt = select(PriceRecommendation).where(
         PriceRecommendation.id == recommendation_id,
-        PriceRecommendation.tenant_id == user["tenant_id"],
+        PriceRecommendation.tenant_id == tenant.id,
         PriceRecommendation.status == "PENDING"
     )
     result = await db.execute(stmt)
@@ -192,11 +190,10 @@ async def ignore_recommendation(
 @router.post("/simulations/{scenario}")
 async def simulate_market(
     scenario: str,
-    request: Request,
+    tenant: Tenant = Depends(get_current_tenant),
     db: AsyncSession = Depends(get_db)
 ):
     """Trigger an AI Market Intelligence simulation."""
-    user = await get_current_user_from_cookie(request)
     
     now_utc = datetime.now(timezone.utc)
     expires = now_utc + timedelta(minutes=30)
@@ -204,7 +201,7 @@ async def simulate_market(
     # 1. Supersede any currently pending recommendations
     await db.execute(
         PriceRecommendation.__table__.update()
-        .where(PriceRecommendation.tenant_id == user["tenant_id"])
+        .where(PriceRecommendation.tenant_id == tenant.id)
         .where(PriceRecommendation.status == "PENDING")
         .values(status="SUPERSEDED", updated_at=now_utc)
     )
@@ -217,7 +214,7 @@ async def simulate_market(
 
     if scenario == "weekend-demand":
         snapshot = MarketSnapshot(
-            tenant_id=user["tenant_id"],
+            tenant_id=tenant.id,
             source_count=8,
             captured_at=now_utc,
             analysis_status="COMPLETED",
@@ -234,7 +231,7 @@ async def simulate_market(
         await db.flush()
 
         rec = PriceRecommendation(
-            tenant_id=user["tenant_id"],
+            tenant_id=tenant.id,
             snapshot_id=snapshot.id,
             sku="BROILER",
             current_price=current_broiler_price,
@@ -258,7 +255,7 @@ async def simulate_market(
         db.add(rec)
     elif scenario == "feed-cost-spike":
         snapshot = MarketSnapshot(
-            tenant_id=user["tenant_id"],
+            tenant_id=tenant.id,
             source_count=10,
             captured_at=now_utc,
             analysis_status="COMPLETED",
@@ -274,7 +271,7 @@ async def simulate_market(
         await db.flush()
 
         rec = PriceRecommendation(
-            tenant_id=user["tenant_id"],
+            tenant_id=tenant.id,
             snapshot_id=snapshot.id,
             sku="BROILER",
             current_price=current_broiler_price,
@@ -298,7 +295,7 @@ async def simulate_market(
         db.add(rec)
     elif scenario == "no-action":
         snapshot = MarketSnapshot(
-            tenant_id=user["tenant_id"],
+            tenant_id=tenant.id,
             source_count=8,
             captured_at=now_utc,
             analysis_status="COMPLETED",
@@ -314,7 +311,7 @@ async def simulate_market(
         await db.flush()
 
         rec = PriceRecommendation(
-            tenant_id=user["tenant_id"],
+            tenant_id=tenant.id,
             snapshot_id=snapshot.id,
             sku="BROILER",
             current_price=current_broiler_price,
@@ -332,8 +329,8 @@ async def simulate_market(
         db.add(rec)
     elif scenario == "clear":
         # Delete all snapshots and recommendations
-        await db.execute(MarketSnapshot.__table__.delete().where(MarketSnapshot.tenant_id == user["tenant_id"]))
-        await db.execute(PriceRecommendation.__table__.delete().where(PriceRecommendation.tenant_id == user["tenant_id"]))
+        await db.execute(MarketSnapshot.__table__.delete().where(MarketSnapshot.tenant_id == tenant.id))
+        await db.execute(PriceRecommendation.__table__.delete().where(PriceRecommendation.tenant_id == tenant.id))
         await db.commit()
         return {"message": "Market Intelligence reset"}
     else:
