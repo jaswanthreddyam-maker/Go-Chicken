@@ -90,8 +90,8 @@ async def update_profile(
         
     # Sync contact_number to User table for WhatsApp routing
     if "contact_number" in update_data and update_data["contact_number"]:
-        from models.user import User
-        user_result = await db.execute(select(User).where(User.tenant_id == tenant_id, User.role == "ADMIN"))
+        from models.user import User, UserRole
+        user_result = await db.execute(select(User).where(User.tenant_id == tenant_id, User.role == UserRole.ADMIN))
         user = user_result.scalar_one_or_none()
         if user:
             # Strip non-numeric characters for WhatsApp format (e.g. 15551701265)
