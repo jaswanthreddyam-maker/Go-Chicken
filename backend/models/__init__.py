@@ -45,3 +45,4 @@ from models.tenant import Tenant
 # Onboarding Models
 from models.invitation import RetailerInvitation, InviteSource, InviteStatus
 from models.onboarding import RetailerOnboardingDraft, DraftStatus
+from models.market import MarketSnapshot, PriceRecommendation

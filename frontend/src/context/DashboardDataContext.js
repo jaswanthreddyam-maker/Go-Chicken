@@ -34,6 +34,49 @@ export function DashboardDataProvider({ children }) {
 
   const { addToast, addNotification } = useUI();
 
+  // ── Market Intelligence Actions ──
+  const acceptRecommendation = useCallback(async (id) => {
+    try {
+      const res = await fetch(`${API_BASE}/market/recommendations/${id}/accept`, {
+        method: "POST",
+        credentials: "include"
+      });
+      if (!res.ok) throw new Error("Failed to accept");
+      // We intentionally do NOT mutate state here. 
+      // The SSE stream will broadcast 'pricing.recommendation.accepted' to handle UI updates and toasts.
+    } catch (err) {
+      addToast('Error accepting recommendation.', 'error');
+    }
+  }, []);
+
+  const ignoreRecommendation = useCallback(async (id) => {
+    try {
+      const res = await fetch(`${API_BASE}/market/recommendations/${id}/ignore`, {
+        method: "POST",
+        credentials: "include"
+      });
+      if (!res.ok) throw new Error("Failed to ignore");
+      addToast('Recommendation ignored.', 'success');
+      fetchMarketIntelligence(true);
+    } catch (err) {
+      addToast('Error ignoring recommendation.', 'error');
+    }
+  }, []);
+
+  const simulateMarket = useCallback(async (scenario) => {
+    try {
+      const res = await fetch(`${API_BASE}/market/simulations/${scenario}`, {
+        method: "POST",
+        credentials: "include"
+      });
+      if (!res.ok) throw new Error("Failed to simulate");
+      addToast(`Simulated market condition: ${scenario}`, 'success');
+      fetchMarketIntelligence(true);
+    } catch (err) {
+      addToast('Simulation failed.', 'error');
+    }
+  }, []);
+
   // ── Live Data State ──
   const [ordersList, setOrdersList] = useState([]);
   const [productPrices, setProductPrices] = useState([]);
@@ -60,6 +103,14 @@ export function DashboardDataProvider({ children }) {
   const [livePulse, setLivePulse] = useState(false);
   const [eventCount, setEventCount] = useState(0);
   const [latestAIExtraction, setLatestAIExtraction] = useState(null);
+
+  // ── Market Intelligence State ──
+  const [marketIntelligence, setMarketIntelligence] = useState({
+    snapshot: null,
+    recommendations: []
+  });
+  const [isLoadingMarket, setIsLoadingMarket] = useState(true);
+  const [marketError, setMarketError] = useState(null);
 
   // ── Error Classifier ──
   const classifyError = useCallback((err, response) => {
@@ -226,6 +277,26 @@ export function DashboardDataProvider({ children }) {
     }
   }, []);
 
+  const fetchMarketIntelligence = useCallback(async (silent = false) => {
+    if (!silent) setIsLoadingMarket(true);
+    try {
+      const res = await fetch(`${API_BASE}/market/intelligence`, {
+        credentials: "include"
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
+      setMarketIntelligence({
+        snapshot: data.snapshot,
+        recommendations: data.recommendations || []
+      });
+      setMarketError(null);
+    } catch (err) {
+      if (!silent) setMarketError('Unable to load market intelligence data.');
+    } finally {
+      if (!silent) setIsLoadingMarket(false);
+    }
+  }, []);
+
   const fetchAll = useCallback(async (silent = false) => {
     await Promise.allSettled([
       fetchOrders(silent),
@@ -235,8 +306,9 @@ export function DashboardDataProvider({ children }) {
       fetchQuotes(silent),
       fetchInventory(silent),
       fetchAIAnalytics(silent),
+      fetchMarketIntelligence(silent),
     ]);
-  }, [fetchOrders, fetchPrices, fetchTrucks, fetchRetailers, fetchQuotes, fetchInventory, fetchAIAnalytics]);
+  }, [fetchOrders, fetchPrices, fetchTrucks, fetchRetailers, fetchQuotes, fetchInventory, fetchAIAnalytics, fetchMarketIntelligence]);
 
   const handleRefresh = useCallback(() => {
     fetchAll(false);
@@ -329,6 +401,29 @@ export function DashboardDataProvider({ children }) {
         } else if (type === "RETAILER_REJECTED") {
           addToast(`🔴 Retailer Rejected\n${data.phone}`, "error");
           fetchRetailers(true);
+        } else if (type === "pricing.recommendation.accepted") {
+          // Re-fetch market state to dismiss the recommendation UI
+          setTimeout(() => {
+            fetchMarketIntelligence(true);
+          }, 300);
+
+          // Re-fetch rate card UI
+          setTimeout(() => {
+            fetchPrices(true);
+          }, 600);
+
+          // Simulate WhatsApp Price Card Sync (Fake timeline entry for demo purposes)
+          setTimeout(() => {
+            setOperationsFeed(prev => [{
+              id: `whatsapp-sync-${Date.now()}`,
+              time: new Date(timestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}),
+              type: 'WhatsApp',
+              title: 'WhatsApp Catalog Synced',
+              desc: `${data.sku} @ ₹${data.new_price}/kg`,
+              value: '',
+              icon: '📱'
+            }, ...prev].slice(0, 50));
+          }, 900);
         }
       } catch (err) {
         console.error("SSE parse error", err);
@@ -600,22 +695,26 @@ export function DashboardDataProvider({ children }) {
         quotesList,
         inventoryList,
         inventoryTxns,
+        marketIntelligence,
         isLoadingOrders,
         isLoadingPrices,
         isLoadingTrucks,
         isLoadingQuotes,
         isLoadingInventory,
+        isLoadingMarket,
         ordersError,
         pricesError,
         trucksError,
         quotesError,
         inventoryError,
+        marketError,
         fetchOrders,
         fetchPrices,
         fetchTrucks,
         fetchRetailers,
         fetchQuotes,
         fetchInventory,
+        fetchMarketIntelligence,
         fetchAll,
         handleRefresh,
         handleStatusToggle,
@@ -623,6 +722,9 @@ export function DashboardDataProvider({ children }) {
         handlePaymentSubmit,
         handleAddTruck,
         handleDeleteTruck,
+        acceptRecommendation,
+        ignoreRecommendation,
+        simulateMarket,
         createQuote,
         convertQuote,
         approveQuote,

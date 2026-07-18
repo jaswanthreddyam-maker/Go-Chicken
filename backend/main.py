@@ -23,6 +23,7 @@ from routers import (
     events,
     ai,
     retailers,
+    market,
 )  # Import routers
 from api.v1 import khata as khata_v1  # Import Khata ledger router
 from sqlalchemy import text
@@ -94,6 +95,7 @@ app.include_router(khata_v1.router, prefix="/api/v1/khata", tags=["Khata Ledger"
 app.include_router(events.router, prefix="/api/v1")
 app.include_router(ai.router)
 app.include_router(retailers.router, prefix="/api/v1")
+app.include_router(market.router, prefix="/api/v1")
 
 
 # Root alias routes in case Meta webhook is configured without /api/v1 prefix
