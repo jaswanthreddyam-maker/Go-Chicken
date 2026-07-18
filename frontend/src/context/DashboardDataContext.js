@@ -34,48 +34,7 @@ export function DashboardDataProvider({ children }) {
 
   const { addToast, addNotification } = useUI();
 
-  // ── Market Intelligence Actions ──
-  const acceptRecommendation = useCallback(async (id) => {
-    try {
-      const res = await fetch(`${API_BASE}/market/recommendations/${id}/accept`, {
-        method: "POST",
-        credentials: "include"
-      });
-      if (!res.ok) throw new Error("Failed to accept");
-      // We intentionally do NOT mutate state here. 
-      // The SSE stream will broadcast 'pricing.recommendation.accepted' to handle UI updates and toasts.
-    } catch (err) {
-      addToast('Error accepting recommendation.', 'error');
-    }
-  }, []);
 
-  const ignoreRecommendation = useCallback(async (id) => {
-    try {
-      const res = await fetch(`${API_BASE}/market/recommendations/${id}/ignore`, {
-        method: "POST",
-        credentials: "include"
-      });
-      if (!res.ok) throw new Error("Failed to ignore");
-      addToast('Recommendation ignored.', 'success');
-      fetchMarketIntelligence(true);
-    } catch (err) {
-      addToast('Error ignoring recommendation.', 'error');
-    }
-  }, []);
-
-  const simulateMarket = useCallback(async (scenario) => {
-    try {
-      const res = await fetch(`${API_BASE}/market/simulations/${scenario}`, {
-        method: "POST",
-        credentials: "include"
-      });
-      if (!res.ok) throw new Error("Failed to simulate");
-      addToast(`Simulated market condition: ${scenario}`, 'success');
-      fetchMarketIntelligence(true);
-    } catch (err) {
-      addToast('Simulation failed.', 'error');
-    }
-  }, []);
 
   // ── Live Data State ──
   const [ordersList, setOrdersList] = useState([]);
@@ -296,6 +255,49 @@ export function DashboardDataProvider({ children }) {
       if (!silent) setIsLoadingMarket(false);
     }
   }, []);
+
+  // ── Market Intelligence Actions ──
+  const acceptRecommendation = useCallback(async (id) => {
+    try {
+      const res = await fetch(`${API_BASE}/market/recommendations/${id}/accept`, {
+        method: "POST",
+        credentials: "include"
+      });
+      if (!res.ok) throw new Error("Failed to accept");
+      // We intentionally do NOT mutate state here. 
+      // The SSE stream will broadcast 'pricing.recommendation.accepted' to handle UI updates and toasts.
+    } catch (err) {
+      addToast('Error accepting recommendation.', 'error');
+    }
+  }, [addToast]);
+
+  const ignoreRecommendation = useCallback(async (id) => {
+    try {
+      const res = await fetch(`${API_BASE}/market/recommendations/${id}/ignore`, {
+        method: "POST",
+        credentials: "include"
+      });
+      if (!res.ok) throw new Error("Failed to ignore");
+      addToast('Recommendation ignored.', 'success');
+      fetchMarketIntelligence(true);
+    } catch (err) {
+      addToast('Error ignoring recommendation.', 'error');
+    }
+  }, [addToast, fetchMarketIntelligence]);
+
+  const simulateMarket = useCallback(async (scenario) => {
+    try {
+      const res = await fetch(`${API_BASE}/market/simulations/${scenario}`, {
+        method: "POST",
+        credentials: "include"
+      });
+      if (!res.ok) throw new Error("Failed to simulate");
+      addToast(`Simulated market condition: ${scenario}`, 'success');
+      fetchMarketIntelligence(true);
+    } catch (err) {
+      addToast('Simulation failed.', 'error');
+    }
+  }, [addToast, fetchMarketIntelligence]);
 
   const fetchAll = useCallback(async (silent = false) => {
     await Promise.allSettled([

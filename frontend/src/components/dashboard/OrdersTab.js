@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import { Edit3, Clock, Activity, RefreshCw, Search, Package, Zap, ChevronDown, ChevronUp, CheckCircle, TrendingUp, X, Check } from "lucide-react";
 import { Button, DataTable, StatusBadge, Toast, ErrorBanner } from "@/components/ui";
 import { Page, PageHeader, PageContent, PageSection } from "@/components/ui/PageLayout";
